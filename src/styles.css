@@ -1,0 +1,26 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #fff4dd;
+  font-family: 'Noto Sans Thai', 'Segoe UI', system-ui, sans-serif;
+  font-size: 20px;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#board {
+  touch-action: none;
+  max-width: 100vw;
+  max-height: 100vh;
+}
