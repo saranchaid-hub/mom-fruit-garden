@@ -190,6 +190,29 @@ async function playReshuffle(
   });
 }
 
+function playSpecialSpawn(
+  event: Extract<TurnEvent, { kind: 'specialSpawn' }>,
+  renderPieces: Map<number, RenderPiece>,
+): Promise<void> {
+  // Instant, not animated: the spawned piece replaces whatever render piece
+  // was already sitting at this cell (its match-cleared neighbors fade out
+  // in the same phase via playClear).
+  const oldId = findPieceIdAt(renderPieces, event.at);
+  if (oldId !== undefined) {
+    renderPieces.delete(oldId);
+  }
+  renderPieces.set(event.piece.id, {
+    pieceId: event.piece.id,
+    fruit: event.piece.fruit,
+    special: event.piece.special,
+    x: event.at.x,
+    y: event.at.y,
+    scale: 1,
+    alpha: 1,
+  });
+  return Promise.resolve();
+}
+
 export async function playPhases(phases: TurnEvent[][], renderPieces: Map<number, RenderPiece>): Promise<void> {
   for (const phase of phases) {
     await Promise.all(
@@ -205,7 +228,11 @@ export async function playPhases(phases: TurnEvent[][], renderPieces: Map<number
             return playRefill(event, renderPieces);
           case 'reshuffle':
             return playReshuffle(event, renderPieces);
+          case 'specialSpawn':
+            return playSpecialSpawn(event, renderPieces);
           case 'jellyClear':
+          case 'specialFire':
+          case 'comboFire':
           case 'score':
             return Promise.resolve();
         }

@@ -1,27 +1,73 @@
 import { canSwap, cellAt, swapPieces } from './board';
-import { findMatches } from './match';
+import { findMatches, type MatchGroup } from './match';
 import { randomInt, type Rng } from './rng';
-import type { Board, FallMove, FruitKind, Pos, ResolveResult, Spawn, TurnEvent } from './types';
+import {
+  areaForSpecial,
+  cellsOfFruit,
+  classifySpawn,
+  comboBlast,
+  isSpecialSwap,
+  pickRandomFruitOnBoard,
+  pickSpawnCell,
+} from './specials';
+import type { Board, FallMove, FruitKind, Piece, Pos, ResolveResult, Spawn, SpecialType, TurnEvent } from './types';
 
 const POINTS_PER_PIECE = 10;
 
-function uniquePositions(cells: Pos[]): Pos[] {
-  const seen = new Set<string>();
-  const result: Pos[] = [];
-  for (const pos of cells) {
-    const key = `${pos.x},${pos.y}`;
-    if (!seen.has(key)) {
-      seen.add(key);
-      result.push(pos);
-    }
-  }
-  return result;
+interface Activation {
+  clearedCells: Pos[];
+  fireEvents: TurnEvent[];
+  byFruit: Partial<Record<FruitKind, number>>;
+  jellyCells: Pos[];
 }
 
-function clearCells(board: Board, cellsToClear: Pos[]): { byFruit: Partial<Record<FruitKind, number>>; jellyCells: Pos[] } {
+/**
+ * Clears a seed set of cells, then BFS-activates any special piece caught in
+ * that clear (its own area is enqueued too), so a chain of specials fires in
+ * one pass. A color bomb caught passively this way (not deliberately
+ * swapped) clears a random fruit present on the board.
+ */
+function activateAndClear(board: Board, seedCells: Pos[], rng: Rng, fruits: FruitKind[]): Activation {
+  const toClear = new Set<string>();
+  const queue: Pos[] = [];
+  const fireEvents: TurnEvent[] = [];
+
+  function enqueue(pos: Pos): void {
+    const key = `${pos.x},${pos.y}`;
+    if (!toClear.has(key)) {
+      toClear.add(key);
+      queue.push(pos);
+    }
+  }
+
+  for (const pos of seedCells) enqueue(pos);
+
+  while (queue.length > 0) {
+    const pos = queue.shift() as Pos;
+    const cell = cellAt(board, pos);
+    const piece = cell.piece;
+    if (!piece || piece.special === 'none') continue;
+
+    if (piece.special === 'colorBomb') {
+      const fruit = pickRandomFruitOnBoard(board, fruits, rng);
+      const affected = fruit ? cellsOfFruit(board, fruit) : [];
+      fireEvents.push({ kind: 'specialFire', at: pos, special: 'colorBomb', affected });
+      for (const p of affected) enqueue(p);
+    } else {
+      const affected = areaForSpecial(board, pos, piece.special);
+      fireEvents.push({ kind: 'specialFire', at: pos, special: piece.special, affected });
+      for (const p of affected) enqueue(p);
+    }
+  }
+
+  const clearedCells = Array.from(toClear).map((key) => {
+    const [x, y] = key.split(',').map(Number);
+    return { x: x as number, y: y as number };
+  });
+
   const byFruit: Partial<Record<FruitKind, number>> = {};
   const jellyCells: Pos[] = [];
-  for (const pos of cellsToClear) {
+  for (const pos of clearedCells) {
     const cell = cellAt(board, pos);
     if (cell.piece) {
       if (cell.piece.fruit) {
@@ -34,7 +80,46 @@ function clearCells(board: Board, cellsToClear: Pos[]): { byFruit: Partial<Recor
       jellyCells.push(pos);
     }
   }
-  return { byFruit, jellyCells };
+
+  return { clearedCells, fireEvents, byFruit, jellyCells };
+}
+
+interface PendingSpawn {
+  at: Pos;
+  special: SpecialType;
+}
+
+function planMatchClears(
+  groups: MatchGroup[],
+  preferredSpawnCells: Pos[],
+): { seedCells: Pos[]; spawns: PendingSpawn[] } {
+  const seedCells: Pos[] = [];
+  const spawns: PendingSpawn[] = [];
+  for (const group of groups) {
+    const special = classifySpawn(group);
+    let spawnCell: Pos | null = null;
+    if (special !== 'none') {
+      spawnCell = pickSpawnCell(group, preferredSpawnCells);
+      spawns.push({ at: spawnCell, special });
+    }
+    for (const cell of group.cells) {
+      if (spawnCell && cell.x === spawnCell.x && cell.y === spawnCell.y) continue;
+      seedCells.push(cell);
+    }
+  }
+  return { seedCells, spawns };
+}
+
+function applySpawns(board: Board, spawns: PendingSpawn[], nextId: () => number): TurnEvent[] {
+  const events: TurnEvent[] = [];
+  for (const spawn of spawns) {
+    const cell = cellAt(board, spawn.at);
+    const fruit = spawn.special === 'colorBomb' ? null : (cell.piece?.fruit ?? null);
+    const piece: Piece = { id: nextId(), fruit, special: spawn.special };
+    cell.piece = piece;
+    events.push({ kind: 'specialSpawn', at: spawn.at, piece });
+  }
+  return events;
 }
 
 export function applyGravity(board: Board): FallMove[] {
@@ -92,16 +177,19 @@ function settleBoard(board: Board, rng: Rng, nextId: () => number, fruits: Fruit
   }
 }
 
-function clearAndScore(board: Board, cellsToClear: Pos[], chain: number, phases: TurnEvent[][], awardScore: boolean): number {
-  const { byFruit, jellyCells } = clearCells(board, cellsToClear);
-  const clearPhase: TurnEvent[] = [{ kind: 'clear', cells: cellsToClear, byFruit }];
-  if (jellyCells.length > 0) {
-    clearPhase.push({ kind: 'jellyClear', cells: jellyCells });
+function emitActivationPhase(
+  activation: Activation,
+  chain: number,
+  phases: TurnEvent[][],
+  extraEvents: TurnEvent[] = [],
+): number {
+  const clearPhase: TurnEvent[] = [...extraEvents, { kind: 'clear', cells: activation.clearedCells, byFruit: activation.byFruit }];
+  if (activation.jellyCells.length > 0) {
+    clearPhase.push({ kind: 'jellyClear', cells: activation.jellyCells });
   }
-  const points = awardScore ? cellsToClear.length * POINTS_PER_PIECE * chain : 0;
-  if (awardScore) {
-    clearPhase.push({ kind: 'score', amount: points, chain });
-  }
+  clearPhase.push(...activation.fireEvents);
+  const points = activation.clearedCells.length * POINTS_PER_PIECE * chain;
+  clearPhase.push({ kind: 'score', amount: points, chain });
   phases.push(clearPhase);
   return points;
 }
@@ -113,16 +201,23 @@ function runCascade(
   fruits: FruitKind[],
   phases: TurnEvent[][],
   startChain: number,
+  firstIterationPreferredCells: Pos[],
 ): number {
   let chain = startChain;
   let scoreDelta = 0;
+  let preferredCells = firstIterationPreferredCells;
   for (;;) {
     const groups = findMatches(board);
     if (groups.length === 0) {
       break;
     }
-    const cells = uniquePositions(groups.flatMap((group) => group.cells));
-    scoreDelta += clearAndScore(board, cells, chain, phases, true);
+    const { seedCells, spawns } = planMatchClears(groups, preferredCells);
+    preferredCells = [];
+
+    const activation = activateAndClear(board, seedCells, rng, fruits);
+    const spawnEvents = applySpawns(board, spawns, nextId);
+    scoreDelta += emitActivationPhase(activation, chain, phases, spawnEvents);
+
     settleBoard(board, rng, nextId, fruits, phases);
     chain++;
   }
@@ -143,6 +238,28 @@ export function resolveSwap(
     return { phases, scoreDelta: 0, movesUsed: 0 };
   }
 
+  const pieceA = cellAt(board, a).piece as Piece;
+  const pieceB = cellAt(board, b).piece as Piece;
+
+  if (isSpecialSwap(pieceA, pieceB)) {
+    swapPieces(board, a, b);
+    phases.push([{ kind: 'swap', a, b, illegal: false }]);
+    const { seedCells, comboEvent } = comboBlast(board, a, b, pieceA, pieceB);
+    // The two swapped special pieces are always spent, even when a combo's
+    // own blast geometry wouldn't otherwise reach them (e.g. color bomb +
+    // plain fruit only clears the *other* fruit, never the bomb's own null-
+    // fruit cell). The BFS Set dedupes, so including them is always safe.
+    // For a color bomb this does mean it also fires its passive
+    // catch-in-a-blast effect (a bonus random-fruit clear) on top of its
+    // deliberate combo effect — treated as a harmless, even fun, side
+    // effect rather than something worth extra machinery to suppress.
+    const activation = activateAndClear(board, [a, b, ...seedCells], rng, fruits);
+    const points = emitActivationPhase(activation, 1, phases, [comboEvent]);
+    settleBoard(board, rng, nextId, fruits, phases);
+    const cascadeScore = runCascade(board, rng, nextId, fruits, phases, 2, []);
+    return { phases, scoreDelta: points + cascadeScore, movesUsed: 1 };
+  }
+
   swapPieces(board, a, b);
   if (!findMatches(board).length) {
     swapPieces(board, a, b);
@@ -151,7 +268,7 @@ export function resolveSwap(
   }
 
   phases.push([{ kind: 'swap', a, b, illegal: false }]);
-  const scoreDelta = runCascade(board, rng, nextId, fruits, phases, 1);
+  const scoreDelta = runCascade(board, rng, nextId, fruits, phases, 1, [a, b]);
   return { phases, scoreDelta, movesUsed: 1 };
 }
 
@@ -168,10 +285,22 @@ export function resolveHammer(
   }
 
   const phases: TurnEvent[][] = [];
+  const activation = activateAndClear(board, [at], rng, fruits);
   // The hammer's own destroyed piece earns no score — it's a free unsticking
-  // tool, not a scoring move. Anything it happens to cascade into does score.
-  clearAndScore(board, [at], 1, phases, false);
+  // tool. Anything its special ability (or a resulting cascade) clears does.
+  const bonusCells = Math.max(0, activation.clearedCells.length - 1);
+  const clearPhase: TurnEvent[] = [{ kind: 'clear', cells: activation.clearedCells, byFruit: activation.byFruit }];
+  if (activation.jellyCells.length > 0) {
+    clearPhase.push({ kind: 'jellyClear', cells: activation.jellyCells });
+  }
+  clearPhase.push(...activation.fireEvents);
+  const points = bonusCells * POINTS_PER_PIECE;
+  if (points > 0) {
+    clearPhase.push({ kind: 'score', amount: points, chain: 1 });
+  }
+  phases.push(clearPhase);
+
   settleBoard(board, rng, nextId, fruits, phases);
-  const scoreDelta = runCascade(board, rng, nextId, fruits, phases, 1);
-  return { phases, scoreDelta, movesUsed: 0 };
+  const cascadeScore = runCascade(board, rng, nextId, fruits, phases, 2, []);
+  return { phases, scoreDelta: points + cascadeScore, movesUsed: 0 };
 }

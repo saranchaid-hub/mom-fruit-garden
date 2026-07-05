@@ -1,7 +1,7 @@
 import { createSession, trySwap } from '../core/session';
 import type { LevelConfig, Pos } from '../core/types';
 import { attachBoardInput } from './input';
-import { drawFruit } from './render/fruits';
+import { drawColorBomb, drawFruit, drawSpecialOverlay } from './render/fruits';
 import { createRenderPieces, playPhases, type RenderPiece } from './render/playback';
 import { cellCenter, computeLayout, drawBoardBackground, roundRect, setupHiDpiCanvas, type Layout } from './render/renderer';
 
@@ -47,9 +47,14 @@ export function startSandbox(canvas: HTMLCanvasElement): () => void {
     }
 
     for (const piece of renderPieces.values()) {
-      if (!piece.fruit) continue;
       const { x, y } = cellCenter(layout, piece.x, piece.y);
-      drawFruit(ctx, piece.fruit, x, y, layout.tileSize * piece.scale, piece.alpha);
+      const size = layout.tileSize * piece.scale;
+      if (piece.special === 'colorBomb') {
+        drawColorBomb(ctx, x, y, size, piece.alpha);
+      } else if (piece.fruit) {
+        drawFruit(ctx, piece.fruit, x, y, size, piece.alpha);
+        drawSpecialOverlay(ctx, piece.special, x, y, size);
+      }
     }
 
     rafId = requestAnimationFrame(drawFrame);

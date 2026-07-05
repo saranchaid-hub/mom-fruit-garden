@@ -1,4 +1,4 @@
-import type { FruitKind } from '../../core/types';
+import type { FruitKind, SpecialType } from '../../core/types';
 
 const FRUIT_COLORS: Record<FruitKind, { fill: string; stroke: string }> = {
   mango: { fill: '#ffb703', stroke: '#d68c00' },
@@ -164,4 +164,63 @@ function drawBanana(ctx: CanvasRenderingContext2D, cx: number, cy: number, size:
   path.closePath();
   ctx.fill(path);
   ctx.stroke(path);
+}
+
+/**
+ * Drawn on top of a fruit sprite for stripedH/stripedV/wrapped. Color bomb
+ * has no fruit to overlay (its fruit is null) and is drawn standalone via
+ * drawColorBomb instead.
+ */
+export function drawSpecialOverlay(
+  ctx: CanvasRenderingContext2D,
+  special: SpecialType,
+  cx: number,
+  cy: number,
+  size: number,
+): void {
+  if (special === 'none' || special === 'colorBomb') {
+    return;
+  }
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+  ctx.lineWidth = Math.max(1, size * 0.045);
+  const r = size * 0.36;
+
+  if (special === 'stripedH') {
+    for (const dy of [-r * 0.4, 0, r * 0.4]) {
+      ctx.beginPath();
+      ctx.moveTo(cx - r * 0.85, cy + dy);
+      ctx.lineTo(cx + r * 0.85, cy + dy);
+      ctx.stroke();
+    }
+  } else if (special === 'stripedV') {
+    for (const dx of [-r * 0.4, 0, r * 0.4]) {
+      ctx.beginPath();
+      ctx.moveTo(cx + dx, cy - r * 0.85);
+      ctx.lineTo(cx + dx, cy + r * 0.85);
+      ctx.stroke();
+    }
+  } else if (special === 'wrapped') {
+    ctx.strokeRect(cx - r * 0.9, cy - r * 0.9, r * 1.8, r * 1.8);
+  }
+  ctx.restore();
+}
+
+export function drawColorBomb(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, alpha = 1): void {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  const r = size * 0.36;
+  const gradient = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.3, r * 0.08, cx, cy, r);
+  gradient.addColorStop(0, '#ffffff');
+  gradient.addColorStop(0.35, '#ff6b9d');
+  gradient.addColorStop(0.7, '#7c3aed');
+  gradient.addColorStop(1, '#1e1b4b');
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#1e1b4b';
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  ctx.stroke();
+  ctx.restore();
 }
