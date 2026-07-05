@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { createObjectiveProgress } from '../src/core/objectives';
 import { createSession, trySwap, useHammer } from '../src/core/session';
 import type { LevelConfig } from '../src/core/types';
+import { parseTestBoard } from './helpers';
 
 const baseConfig: LevelConfig = {
   width: 6,
@@ -96,5 +98,69 @@ describe('useHammer', () => {
     const result = useHammer(session, { x: 1, y: 1 });
     expect(result.phases).toEqual([]);
     expect(session.score).toBe(before);
+  });
+});
+
+describe('victory blast', () => {
+  it('fires leftover special pieces on the winning turn and adds their score', () => {
+    const config: LevelConfig = {
+      width: 5,
+      height: 5,
+      fruits: ['mango', 'orange', 'grape', 'watermelon'],
+      moves: 5,
+      objective: { type: 'score', target: 10 },
+      starScores: [500, 1000],
+    };
+    const session = createSession(config, 1);
+    // Replace the random board with a fixture: a single winning 3-match is
+    // available (swap (3,1)<->(3,2) lines up mango on row 1), and an unused
+    // stripedH orange sits far away in the corner.
+    session.board = parseTestBoard([
+      'M O G W Oh',
+      'O M M G W',
+      'G W O M G',
+      'W G M O W',
+      'O W G W M',
+    ]);
+    session.objectiveProgress = createObjectiveProgress(config.objective, session.board);
+
+    const result = trySwap(session, { x: 3, y: 1 }, { x: 3, y: 2 });
+    expect(session.outcome).toBe('won');
+
+    // The leftover striped fired as part of the winning turn's phases...
+    const fires = result.phases.flat().filter((e) => e.kind === 'specialFire');
+    expect(fires.some((e) => e.kind === 'specialFire' && e.special === 'stripedH')).toBe(true);
+    // ...its cleared pieces scored beyond the bare 3-match (3 x 10 points)...
+    expect(session.score).toBeGreaterThan(30);
+    expect(result.scoreDelta).toBe(session.score);
+    // ...and no special piece is left un-celebrated on the final board.
+    for (const cell of session.board.cells) {
+      expect(cell.piece?.special ?? 'none').toBe('none');
+    }
+  });
+
+  it('does not fire specials when the level is lost', () => {
+    const config: LevelConfig = {
+      width: 5,
+      height: 5,
+      fruits: ['mango', 'orange', 'grape', 'watermelon'],
+      moves: 1,
+      objective: { type: 'score', target: 1_000_000 },
+      starScores: [500, 1000],
+    };
+    const session = createSession(config, 1);
+    session.board = parseTestBoard([
+      'M O G W Oh',
+      'O M M G W',
+      'G W O M G',
+      'W G M O W',
+      'O W G W M',
+    ]);
+    session.objectiveProgress = createObjectiveProgress(config.objective, session.board);
+
+    const result = trySwap(session, { x: 3, y: 1 }, { x: 3, y: 2 });
+    expect(session.outcome).toBe('lost');
+    const fires = result.phases.flat().filter((e) => e.kind === 'specialFire' && e.special === 'stripedH');
+    expect(fires).toEqual([]);
   });
 });

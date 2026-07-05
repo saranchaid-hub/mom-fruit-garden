@@ -2,7 +2,7 @@ import { createBoardFromLayout } from './board';
 import { findMatches } from './match';
 import { hasValidMove, reshuffleBoard } from './moves';
 import { advanceObjective, createObjectiveProgress, isObjectiveComplete } from './objectives';
-import { refillBoard, resolveHammer, resolveSwap } from './resolve';
+import { fireRemainingSpecials, refillBoard, resolveHammer, resolveSwap } from './resolve';
 import { createRng, type Rng } from './rng';
 import type { Board, FruitKind, LevelConfig, ObjectiveProgress, Pos, ResolveResult, TurnEvent, TurnResult } from './types';
 
@@ -89,6 +89,19 @@ function finalize(session: LevelSession, result: ResolveResult, nextId: () => nu
   }
 
   const phases = [...result.phases];
+  let bonusScore = 0;
+  if (session.outcome === 'won') {
+    // Victory blast: any special pieces still on the board fire as a
+    // celebration, and their score counts toward the level (and its stars).
+    // finalize only runs on a turn that started in 'continue', so this fires
+    // exactly once, on the winning turn.
+    const bonus = fireRemainingSpecials(session.board, session.rng, nextId, session.config.fruits);
+    if (bonus.phases.length > 0) {
+      bonusScore = bonus.scoreDelta;
+      session.score += bonusScore;
+      phases.push(...bonus.phases);
+    }
+  }
   if (session.outcome === 'continue' && !hasValidMove(session.board)) {
     const mapping = reshuffleBoard(session.board, session.rng, session.config.fruits, nextId);
     phases.push([{ kind: 'reshuffle', mapping }]);
@@ -97,7 +110,7 @@ function finalize(session: LevelSession, result: ResolveResult, nextId: () => nu
   return {
     phases,
     boardAfter: session.board,
-    scoreDelta: result.scoreDelta,
+    scoreDelta: result.scoreDelta + bonusScore,
     movesUsed: result.movesUsed,
     outcome: session.outcome,
     movesLeft: session.movesLeft,

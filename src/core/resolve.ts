@@ -87,9 +87,11 @@ function activateAndClear(board: Board, seedCells: Pos[], rng: Rng, fruits: Frui
 interface PendingSpawn {
   at: Pos;
   special: SpecialType;
+  fruit: FruitKind | null;
 }
 
 function planMatchClears(
+  board: Board,
   groups: MatchGroup[],
   preferredSpawnCells: Pos[],
 ): { seedCells: Pos[]; spawns: PendingSpawn[] } {
@@ -100,7 +102,13 @@ function planMatchClears(
     let spawnCell: Pos | null = null;
     if (special !== 'none') {
       spawnCell = pickSpawnCell(group, preferredSpawnCells);
-      spawns.push({ at: spawnCell, special });
+      // The spawn's fruit must be captured now, while the group's pieces are
+      // still on the board. A special caught in this same clear can blast the
+      // spawn cell before applySpawns runs; reading the fruit afterwards
+      // would produce a fruit-less piece the renderer never draws — a
+      // permanent-looking "hole" in the board.
+      const groupFruit = cellAt(board, group.cells[0] as Pos).piece?.fruit ?? null;
+      spawns.push({ at: spawnCell, special, fruit: special === 'colorBomb' ? null : groupFruit });
     }
     for (const cell of group.cells) {
       if (spawnCell && cell.x === spawnCell.x && cell.y === spawnCell.y) continue;
@@ -114,8 +122,7 @@ function applySpawns(board: Board, spawns: PendingSpawn[], nextId: () => number)
   const events: TurnEvent[] = [];
   for (const spawn of spawns) {
     const cell = cellAt(board, spawn.at);
-    const fruit = spawn.special === 'colorBomb' ? null : (cell.piece?.fruit ?? null);
-    const piece: Piece = { id: nextId(), fruit, special: spawn.special };
+    const piece: Piece = { id: nextId(), fruit: spawn.fruit, special: spawn.special };
     cell.piece = piece;
     events.push({ kind: 'specialSpawn', at: spawn.at, piece });
   }
@@ -211,7 +218,7 @@ function runCascade(
     if (groups.length === 0) {
       break;
     }
-    const { seedCells, spawns } = planMatchClears(groups, preferredCells);
+    const { seedCells, spawns } = planMatchClears(board, groups, preferredCells);
     preferredCells = [];
 
     const activation = activateAndClear(board, seedCells, rng, fruits);
@@ -270,6 +277,38 @@ export function resolveSwap(
   phases.push([{ kind: 'swap', a, b, illegal: false }]);
   const scoreDelta = runCascade(board, rng, nextId, fruits, phases, 1, [a, b]);
   return { phases, scoreDelta, movesUsed: 1 };
+}
+
+/**
+ * Fires every special piece still on the board — the celebratory "victory
+ * blast" after a level is won, so earned specials never feel wasted. Their
+ * clears (and any cascade that follows) score normally on top of the win.
+ */
+export function fireRemainingSpecials(
+  board: Board,
+  rng: Rng,
+  nextId: () => number,
+  fruits: FruitKind[],
+): ResolveResult {
+  const seeds: Pos[] = [];
+  for (let y = 0; y < board.height; y++) {
+    for (let x = 0; x < board.width; x++) {
+      const piece = cellAt(board, { x, y }).piece;
+      if (piece && piece.special !== 'none') {
+        seeds.push({ x, y });
+      }
+    }
+  }
+  if (seeds.length === 0) {
+    return { phases: [], scoreDelta: 0, movesUsed: 0 };
+  }
+
+  const phases: TurnEvent[][] = [];
+  const activation = activateAndClear(board, seeds, rng, fruits);
+  const points = emitActivationPhase(activation, 1, phases);
+  settleBoard(board, rng, nextId, fruits, phases);
+  const cascadeScore = runCascade(board, rng, nextId, fruits, phases, 2, []);
+  return { phases, scoreDelta: points + cascadeScore, movesUsed: 0 };
 }
 
 export function resolveHammer(

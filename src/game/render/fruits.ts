@@ -1,4 +1,5 @@
 import type { FruitKind, SpecialType } from '../../core/types';
+import { roundRect } from './renderer';
 
 const FRUIT_COLORS: Record<FruitKind, { fill: string; stroke: string }> = {
   mango: { fill: '#ffb703', stroke: '#d68c00' },
@@ -167,9 +168,36 @@ function drawBanana(ctx: CanvasRenderingContext2D, cx: number, cy: number, size:
 }
 
 /**
+ * A pulsing warm halo drawn UNDER any special piece, so specials pop out from
+ * plain fruit at a glance (elderly-friendly: motion + brightness, not just a
+ * subtle marking). `pulse` is 0..1, advanced by the render loop each frame.
+ */
+export function drawSpecialGlow(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  pulse: number,
+): void {
+  const r = size * (0.46 + 0.06 * pulse);
+  const gradient = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
+  gradient.addColorStop(0, `rgba(255, 246, 200, ${0.6 + 0.3 * pulse})`);
+  gradient.addColorStop(0.65, `rgba(255, 214, 90, ${0.35 + 0.25 * pulse})`);
+  gradient.addColorStop(1, 'rgba(255, 214, 90, 0)');
+  ctx.save();
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
  * Drawn on top of a fruit sprite for stripedH/stripedV/wrapped. Color bomb
  * has no fruit to overlay (its fruit is null) and is drawn standalone via
- * drawColorBomb instead.
+ * drawColorBomb instead. Stripes and the wrapper are two-tone (dark under
+ * white) so they stay visible on both light fruits (banana) and dark ones
+ * (mangosteen).
  */
 export function drawSpecialOverlay(
   ctx: CanvasRenderingContext2D,
@@ -182,31 +210,49 @@ export function drawSpecialOverlay(
     return;
   }
   ctx.save();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-  ctx.lineWidth = Math.max(1, size * 0.045);
+  ctx.lineCap = 'round';
   const r = size * 0.36;
 
-  if (special === 'stripedH') {
-    for (const dy of [-r * 0.4, 0, r * 0.4]) {
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.85, cy + dy);
-      ctx.lineTo(cx + r * 0.85, cy + dy);
-      ctx.stroke();
-    }
-  } else if (special === 'stripedV') {
-    for (const dx of [-r * 0.4, 0, r * 0.4]) {
-      ctx.beginPath();
-      ctx.moveTo(cx + dx, cy - r * 0.85);
-      ctx.lineTo(cx + dx, cy + r * 0.85);
-      ctx.stroke();
-    }
+  if (special === 'stripedH' || special === 'stripedV') {
+    const strokeStripes = (color: string, width: number): void => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1, width);
+      for (const offset of [-r * 0.45, 0, r * 0.45]) {
+        ctx.beginPath();
+        if (special === 'stripedH') {
+          ctx.moveTo(cx - r * 0.85, cy + offset);
+          ctx.lineTo(cx + r * 0.85, cy + offset);
+        } else {
+          ctx.moveTo(cx + offset, cy - r * 0.85);
+          ctx.lineTo(cx + offset, cy + r * 0.85);
+        }
+        ctx.stroke();
+      }
+    };
+    strokeStripes('rgba(60, 35, 20, 0.85)', size * 0.1);
+    strokeStripes('rgba(255, 255, 255, 0.95)', size * 0.05);
   } else if (special === 'wrapped') {
-    ctx.strokeRect(cx - r * 0.9, cy - r * 0.9, r * 1.8, r * 1.8);
+    const half = r * 0.95;
+    ctx.strokeStyle = 'rgba(60, 35, 20, 0.85)';
+    ctx.lineWidth = Math.max(1, size * 0.09);
+    roundRect(ctx, cx - half, cy - half, half * 2, half * 2, size * 0.12);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.lineWidth = Math.max(1, size * 0.04);
+    roundRect(ctx, cx - half, cy - half, half * 2, half * 2, size * 0.12);
+    ctx.stroke();
   }
   ctx.restore();
 }
 
-export function drawColorBomb(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, alpha = 1): void {
+export function drawColorBomb(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  size: number,
+  alpha = 1,
+  spin = 0,
+): void {
   ctx.save();
   ctx.globalAlpha = alpha;
   const r = size * 0.36;
@@ -222,5 +268,16 @@ export function drawColorBomb(ctx: CanvasRenderingContext2D, cx: number, cy: num
   ctx.strokeStyle = '#1e1b4b';
   ctx.lineWidth = Math.max(1, size * 0.025);
   ctx.stroke();
+
+  // Slowly orbiting sparkles make the bomb read as "magic" even at rest.
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+  for (let i = 0; i < 6; i++) {
+    const angle = spin + (i * Math.PI) / 3;
+    const sx = cx + Math.cos(angle) * r * 0.62;
+    const sy = cy + Math.sin(angle) * r * 0.62;
+    ctx.beginPath();
+    ctx.arc(sx, sy, Math.max(1, size * 0.03), 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
 }

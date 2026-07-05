@@ -5,7 +5,7 @@ import { createSession, trySwap, useHammer } from '../../core/session';
 import type { Pos, TurnEvent } from '../../core/types';
 import { playFanfare, playPop, playSpecialFire, playThud } from '../audio/sfx';
 import { attachBoardInput } from '../input';
-import { drawColorBomb, drawFruit, drawSpecialOverlay } from '../render/fruits';
+import { drawColorBomb, drawFruit, drawSpecialGlow, drawSpecialOverlay } from '../render/fruits';
 import { createRenderPieces, playPhases, type RenderPiece } from '../render/playback';
 import { cellCenter, computeLayout, drawBoardBackground, roundRect, setupHiDpiCanvas, type Layout } from '../render/renderer';
 import type { Settings, Stars } from '../save';
@@ -117,8 +117,12 @@ export function startPlayScreen(
   }
 
   function resize(): void {
-    const availableHeight = window.innerHeight - hud.offsetHeight;
-    const cssSize = Math.min(window.innerWidth, availableHeight) * 0.92;
+    // Subtract the screen's own padding plus a little breathing room, so the
+    // board can never poke past the bottom edge on height-constrained
+    // (landscape/desktop) windows. #screen-play has 12px padding per side
+    // (24px total vertically), plus 12px breathing room = 36.
+    const availableHeight = window.innerHeight - hud.offsetHeight - 36;
+    const cssSize = Math.max(160, Math.min(window.innerWidth - 24, availableHeight));
     ctx = setupHiDpiCanvas(canvas, cssSize, cssSize);
     layout = computeLayout(session.board, cssSize, cssSize);
   }
@@ -153,11 +157,16 @@ export function startPlayScreen(
       ctx.restore();
     }
 
+    const now = performance.now();
+    const glowPulse = 0.5 + 0.5 * Math.sin(now / 300);
     for (const piece of renderPieces.values()) {
       const { x, y } = cellCenter(layout, piece.x, piece.y);
       const size = layout.tileSize * piece.scale;
+      if (piece.special !== 'none' && piece.alpha > 0.5) {
+        drawSpecialGlow(ctx, x, y, size, glowPulse);
+      }
       if (piece.special === 'colorBomb') {
-        drawColorBomb(ctx, x, y, size, piece.alpha);
+        drawColorBomb(ctx, x, y, size, piece.alpha, now / 900);
       } else if (piece.fruit) {
         drawFruit(ctx, piece.fruit, x, y, size, piece.alpha);
         drawSpecialOverlay(ctx, piece.special, x, y, size);
@@ -256,6 +265,11 @@ export function startPlayScreen(
   resize();
   resetHintTimer();
   window.addEventListener('resize', resize);
+  // The Thai webfont can finish loading after the first layout and change the
+  // HUD's height — re-measure once fonts settle so the board still fits.
+  void document.fonts.ready.then(() => {
+    if (running) resize();
+  });
   rafId = requestAnimationFrame(drawFrame);
 
   return () => {

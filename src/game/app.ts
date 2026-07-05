@@ -78,6 +78,11 @@ export function startApp(elements: AppElements): void {
     const level = getLevel(levelId);
     const mercyBonus = hasMercyBonus(save, levelId);
     const effectiveLevel = mercyBonus ? { ...level, moves: level.moves + MERCY_BONUS_MOVES } : level;
+    // The play screen must be visible BEFORE startPlayScreen runs: its
+    // resize() measures hud.offsetHeight, which is 0 while the screen is
+    // display:none — that made the canvas claim the full window height and
+    // overflow the bottom edge on landscape (desktop) displays.
+    showOnly('play');
     cleanupPlay = startPlayScreen(
       elements.canvas,
       elements.hud,
@@ -94,7 +99,6 @@ export function startApp(elements: AppElements): void {
       },
       save.settings,
     );
-    showOnly('play');
     if (mercyBonus) {
       showToast(STRINGS.mercyBanner);
     }

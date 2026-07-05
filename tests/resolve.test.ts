@@ -93,3 +93,42 @@ describe('resolveHammer', () => {
     expect(jellyEvent).toMatchObject({ cells: [{ x: 0, y: 0 }] });
   });
 });
+
+describe('special spawn caught in a same-turn blast', () => {
+  it('keeps the matched fruit on the spawned special even when a blast clears the spawn cell first', () => {
+    // Swapping (2,0)<->(2,1) completes a horizontal 4-run of mango on row 0
+    // (cols 1-4) whose rightmost piece is ALREADY a stripedH. That striped
+    // fires as part of the same clear and wipes all of row 0 — including the
+    // spawn cell (2,0) — before the new special piece is placed there.
+    // Regression: the spawn used to read its fruit from the (now empty) cell
+    // and end up fruit-less, which the renderer never draws: an invisible
+    // piece that looks like a permanently stuck hole in the board.
+    const board = parseTestBoard([
+      'G M O M Mh',
+      'O W M G G',
+      'W G O W M',
+      'O M W G O',
+      'G W G O W',
+    ]);
+    const fruits = ['mango', 'orange', 'grape', 'watermelon'] as const;
+    const result = resolveSwap(board, { x: 2, y: 0 }, { x: 2, y: 1 }, createRng(5), idGen(), [...fruits]);
+    expect(result.movesUsed).toBe(1);
+
+    const spawnEvents = result.phases.flat().filter((e) => e.kind === 'specialSpawn');
+    expect(spawnEvents.length).toBeGreaterThan(0);
+    for (const event of spawnEvents) {
+      if (event.kind !== 'specialSpawn') continue;
+      if (event.piece.special !== 'colorBomb') {
+        expect(event.piece.fruit).not.toBeNull();
+      }
+    }
+
+    // Board-wide invariant: only a color bomb may be fruit-less. Anything
+    // else fruit-less is invisible to the renderer.
+    for (const cell of board.cells) {
+      if (cell.piece && cell.piece.special !== 'colorBomb') {
+        expect(cell.piece.fruit).not.toBeNull();
+      }
+    }
+  });
+});
