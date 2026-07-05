@@ -9,7 +9,13 @@
   </head>
   <body>
     <div id="app">
-      <canvas id="board"></canvas>
+      <section id="screen-title" class="screen"></section>
+      <section id="screen-map" class="screen"></section>
+      <section id="screen-play" class="screen">
+        <div id="hud"></div>
+        <canvas id="board"></canvas>
+      </section>
+      <div id="dialog-root"></div>
     </div>
     <script type="module" src="src/main.ts"></script>
   </body>
