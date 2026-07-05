@@ -6,8 +6,20 @@ function starText(stars: number): string {
   return '★'.repeat(stars) + '☆'.repeat(3 - stars);
 }
 
-export function renderMap(container: HTMLElement, save: SaveData, onSelectLevel: (levelId: number) => void): void {
+export function renderMap(
+  container: HTMLElement,
+  save: SaveData,
+  onSelectLevel: (levelId: number) => void,
+  onSettings: () => void,
+): void {
   container.innerHTML = '';
+
+  const settingsButton = document.createElement('button');
+  settingsButton.className = 'gear-button';
+  settingsButton.textContent = '⚙️';
+  settingsButton.setAttribute('aria-label', STRINGS.settingsGearLabel);
+  settingsButton.addEventListener('click', onSettings);
+  container.appendChild(settingsButton);
 
   const grid = document.createElement('div');
   grid.className = 'level-grid';

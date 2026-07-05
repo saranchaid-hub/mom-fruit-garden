@@ -22,6 +22,15 @@ export const STRINGS = {
   score: 'คะแนน',
   level: (id: number) => `ด่าน ${id}`,
   locked: 'ยังไม่เปิด',
+  hammerLabel: 'ค้อน',
+  mercyBanner: 'โบนัสพิเศษ +5 ตา!',
+  reshuffleToast: 'สลับผลไม้ให้ใหม่นะ',
+  settingsTitle: 'ตั้งค่า',
+  settingsMusic: 'เพลง',
+  settingsSfx: 'เสียงเอฟเฟกต์',
+  settingsHints: 'คำใบ้',
+  settingsSlowAnimation: 'เคลื่อนไหวช้าลง',
+  settingsGearLabel: 'ตั้งค่า',
   objectiveText(objective: Objective): string {
     switch (objective.type) {
       case 'collect':

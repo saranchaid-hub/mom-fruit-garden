@@ -25,6 +25,7 @@ body {
   align-items: center;
   justify-content: center;
   padding: 24px;
+  position: relative;
 }
 
 .screen[hidden] {
@@ -164,4 +165,61 @@ button:disabled {
 .dialog-stars {
   font-size: 36px;
   color: #d68c00;
+}
+
+.gear-button {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: #ffe8bf;
+  font-size: 26px;
+  min-width: 56px;
+  min-height: 56px;
+  padding: 0;
+  z-index: 5;
+}
+
+.hammer-button {
+  margin-top: 10px;
+  background: #ffe8bf;
+  color: #5b3a29;
+  padding: 10px 20px;
+  font-size: 20px;
+}
+
+.hammer-button.armed {
+  background: #e63946;
+  color: #fff4dd;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  width: 100%;
+  font-size: 22px;
+}
+
+.settings-checkbox {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  accent-color: #ffb703;
+}
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 48px;
+  transform: translateX(-50%);
+  background: #5b3a29;
+  color: #fff4dd;
+  padding: 14px 28px;
+  border-radius: 14px;
+  font-size: 20px;
+  z-index: 20;
+  text-align: center;
+  max-width: 85vw;
 }

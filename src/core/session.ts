@@ -67,7 +67,7 @@ function tallyClear(phases: TurnEvent[][]): { byFruit: Partial<Record<FruitKind,
   return { byFruit, jellyClearedCount };
 }
 
-function finalize(session: LevelSession, result: ResolveResult): TurnResult {
+function finalize(session: LevelSession, result: ResolveResult, nextId: () => number): TurnResult {
   session.score += result.scoreDelta;
   const { byFruit, jellyClearedCount } = tallyClear(result.phases);
   session.objectiveProgress = advanceObjective(session.objectiveProgress, session.config.objective, {
@@ -90,7 +90,7 @@ function finalize(session: LevelSession, result: ResolveResult): TurnResult {
 
   const phases = [...result.phases];
   if (session.outcome === 'continue' && !hasValidMove(session.board)) {
-    const mapping = reshuffleBoard(session.board, session.rng);
+    const mapping = reshuffleBoard(session.board, session.rng, session.config.fruits, nextId);
     phases.push([{ kind: 'reshuffle', mapping }]);
   }
 
@@ -123,7 +123,7 @@ export function trySwap(session: LevelSession, a: Pos, b: Pos): TurnResult {
   }
   const nextId = () => ++session.nextIdCounter;
   const result = resolveSwap(session.board, a, b, session.rng, nextId, session.config.fruits);
-  return finalize(session, result);
+  return finalize(session, result, nextId);
 }
 
 export function useHammer(session: LevelSession, at: Pos): TurnResult {
@@ -136,5 +136,5 @@ export function useHammer(session: LevelSession, at: Pos): TurnResult {
     return staleResult(session);
   }
   session.hammersLeft -= 1;
-  return finalize(session, result);
+  return finalize(session, result, nextId);
 }

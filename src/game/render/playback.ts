@@ -73,6 +73,7 @@ function lerp(a: number, b: number, t: number): number {
 async function playSwap(
   event: Extract<TurnEvent, { kind: 'swap' }>,
   renderPieces: Map<number, RenderPiece>,
+  speed: number,
 ): Promise<void> {
   const idA = findPieceIdAt(renderPieces, event.a);
   const idB = findPieceIdAt(renderPieces, event.b);
@@ -85,7 +86,7 @@ async function playSwap(
   const aStart = { x: pieceA.x, y: pieceA.y };
   const bStart = { x: pieceB.x, y: pieceB.y };
 
-  await animate(SWAP_MS, (t) => {
+  await animate(SWAP_MS * speed, (t) => {
     pieceA.x = lerp(aStart.x, bStart.x, t);
     pieceA.y = lerp(aStart.y, bStart.y, t);
     pieceB.x = lerp(bStart.x, aStart.x, t);
@@ -93,7 +94,7 @@ async function playSwap(
   });
 
   if (event.illegal) {
-    await animate(SWAP_MS, (t) => {
+    await animate(SWAP_MS * speed, (t) => {
       pieceA.x = lerp(bStart.x, aStart.x, t);
       pieceA.y = lerp(bStart.y, aStart.y, t);
       pieceB.x = lerp(aStart.x, bStart.x, t);
@@ -105,13 +106,14 @@ async function playSwap(
 async function playClear(
   event: Extract<TurnEvent, { kind: 'clear' }>,
   renderPieces: Map<number, RenderPiece>,
+  speed: number,
 ): Promise<void> {
   const ids = event.cells.map((pos) => findPieceIdAt(renderPieces, pos)).filter((id): id is number => id !== undefined);
   const pieces = ids.map((id) => renderPieces.get(id)).filter((p): p is RenderPiece => p !== undefined);
   if (pieces.length === 0) {
     return;
   }
-  await animate(CLEAR_MS, (t) => {
+  await animate(CLEAR_MS * speed, (t) => {
     for (const piece of pieces) {
       piece.scale = 1 - t;
       piece.alpha = 1 - t;
@@ -125,6 +127,7 @@ async function playClear(
 async function playFall(
   event: Extract<TurnEvent, { kind: 'fall' }>,
   renderPieces: Map<number, RenderPiece>,
+  speed: number,
 ): Promise<void> {
   const moves = event.moves
     .map((move) => ({ piece: renderPieces.get(move.pieceId), from: move.from, to: move.to }))
@@ -133,7 +136,7 @@ async function playFall(
     return;
   }
   const maxDistance = Math.max(...moves.map((m) => m.to.y - m.from.y));
-  const duration = Math.max(MIN_FALL_MS, maxDistance * FALL_MS_PER_CELL);
+  const duration = Math.max(MIN_FALL_MS, maxDistance * FALL_MS_PER_CELL) * speed;
   await animate(duration, (t) => {
     for (const { piece, from, to } of moves) {
       piece.y = lerp(from.y, to.y, t);
@@ -145,6 +148,7 @@ async function playFall(
 async function playRefill(
   event: Extract<TurnEvent, { kind: 'refill' }>,
   renderPieces: Map<number, RenderPiece>,
+  speed: number,
 ): Promise<void> {
   const spawned = event.spawns.map(({ piece, at }) => {
     const renderPiece: RenderPiece = {
@@ -162,7 +166,7 @@ async function playRefill(
   if (spawned.length === 0) {
     return;
   }
-  await animate(Math.max(MIN_FALL_MS, 2 * FALL_MS_PER_CELL), (t) => {
+  await animate(Math.max(MIN_FALL_MS, 2 * FALL_MS_PER_CELL) * speed, (t) => {
     for (const { renderPiece, targetY } of spawned) {
       renderPiece.y = lerp(targetY - 2, targetY, t);
     }
@@ -172,6 +176,7 @@ async function playRefill(
 async function playReshuffle(
   event: Extract<TurnEvent, { kind: 'reshuffle' }>,
   renderPieces: Map<number, RenderPiece>,
+  speed: number,
 ): Promise<void> {
   const moves = event.mapping
     .map(({ pieceId, to }) => ({ piece: renderPieces.get(pieceId), to }))
@@ -180,7 +185,7 @@ async function playReshuffle(
     return;
   }
   const starts = moves.map(({ piece }) => ({ x: piece.x, y: piece.y }));
-  await animate(RESHUFFLE_MS, (t) => {
+  await animate(RESHUFFLE_MS * speed, (t) => {
     moves.forEach(({ piece, to }, i) => {
       const start = starts[i];
       if (!start) return;
@@ -213,21 +218,26 @@ function playSpecialSpawn(
   return Promise.resolve();
 }
 
-export async function playPhases(phases: TurnEvent[][], renderPieces: Map<number, RenderPiece>): Promise<void> {
+/** speed: 1 for normal, >1 slows everything down proportionally (the "slow" accessibility setting). */
+export async function playPhases(
+  phases: TurnEvent[][],
+  renderPieces: Map<number, RenderPiece>,
+  speed = 1,
+): Promise<void> {
   for (const phase of phases) {
     await Promise.all(
       phase.map((event) => {
         switch (event.kind) {
           case 'swap':
-            return playSwap(event, renderPieces);
+            return playSwap(event, renderPieces, speed);
           case 'clear':
-            return playClear(event, renderPieces);
+            return playClear(event, renderPieces, speed);
           case 'fall':
-            return playFall(event, renderPieces);
+            return playFall(event, renderPieces, speed);
           case 'refill':
-            return playRefill(event, renderPieces);
+            return playRefill(event, renderPieces, speed);
           case 'reshuffle':
-            return playReshuffle(event, renderPieces);
+            return playReshuffle(event, renderPieces, speed);
           case 'specialSpawn':
             return playSpecialSpawn(event, renderPieces);
           case 'jellyClear':
