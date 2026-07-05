@@ -2,13 +2,22 @@ import { getLevel, LEVEL_COUNT } from '../core/levels';
 import { setMusicEnabled, setMusicEnabledFlag, startMusic } from './audio/music';
 import { setSfxEnabled } from './audio/sfx';
 import { unlockAudio } from './audio/context';
-import { hasMercyBonus, loadSave, MERCY_BONUS_MOVES, recordLevelFailure, recordLevelResult, updateSettings } from './save';
+import {
+  hasMercyBonus,
+  loadSave,
+  markTutorialSeen,
+  MERCY_BONUS_MOVES,
+  recordLevelFailure,
+  recordLevelResult,
+  updateSettings,
+} from './save';
 import { showLoseDialog, showWinDialog } from './screens/dialogs';
 import { renderMap } from './screens/map';
 import { startPlayScreen } from './screens/play';
 import { showSettingsDialog } from './screens/settings';
 import { renderTitle } from './screens/title';
 import { showToast } from './screens/toast';
+import { showTutorial } from './screens/tutorial';
 import { STRINGS } from './strings';
 
 export interface AppElements {
@@ -88,6 +97,13 @@ export function startApp(elements: AppElements): void {
     showOnly('play');
     if (mercyBonus) {
       showToast(STRINGS.mercyBanner);
+    }
+
+    const tutorialText = STRINGS.tutorialByLevel[levelId];
+    if (tutorialText && !save.tutorialSeen.includes(levelId)) {
+      showTutorial(elements.dialogRoot, tutorialText, () => {
+        save = markTutorialSeen(save, levelId);
+      });
     }
   }
 

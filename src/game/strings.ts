@@ -31,6 +31,12 @@ export const STRINGS = {
   settingsHints: 'คำใบ้',
   settingsSlowAnimation: 'เคลื่อนไหวช้าลง',
   settingsGearLabel: 'ตั้งค่า',
+  tutorialGotIt: 'เข้าใจแล้ว',
+  tutorialByLevel: {
+    1: 'แตะหรือลากผลไม้ 2 ลูกที่อยู่ติดกัน สลับให้เรียงกัน 3 ลูกขึ้นไปนะ',
+    2: 'ทำเป้าหมายด้านบนให้ครบก่อนตาเดินหมดนะ',
+    3: 'ติดขัดเมื่อไหร่ กดปุ่มค้อนได้เลย ไม่เสียตาเดิน',
+  } as Record<number, string>,
   objectiveText(objective: Objective): string {
     switch (objective.type) {
       case 'collect':

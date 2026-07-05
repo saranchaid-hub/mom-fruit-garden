@@ -18,6 +18,7 @@ export interface SaveData {
   stars: Record<number, Stars>;
   settings: Settings;
   failStreak: FailStreak;
+  tutorialSeen: number[];
 }
 
 const STORAGE_KEY = 'mom-fruit-garden-save-v1';
@@ -33,6 +34,7 @@ function defaultSave(): SaveData {
     stars: {},
     settings: { music: true, sfx: true, hints: true, animSpeed: 'normal' },
     failStreak: { levelId: 0, count: 0 },
+    tutorialSeen: [],
   };
 }
 
@@ -55,6 +57,7 @@ export function loadSave(): SaveData {
       ...parsed,
       settings: { ...fallback.settings, ...parsed.settings },
       failStreak: { ...fallback.failStreak, ...parsed.failStreak },
+      tutorialSeen: parsed.tutorialSeen ?? fallback.tutorialSeen,
     };
   } catch {
     // Private browsing / corrupted data — start fresh rather than crash.
@@ -92,6 +95,15 @@ export function recordLevelFailure(save: SaveData, levelId: number): SaveData {
 /** Whether the next attempt at this level should receive the Mercy Moves bonus. */
 export function hasMercyBonus(save: SaveData, levelId: number): boolean {
   return save.failStreak.levelId === levelId && save.failStreak.count >= MERCY_STREAK_THRESHOLD;
+}
+
+export function markTutorialSeen(save: SaveData, levelId: number): SaveData {
+  if (save.tutorialSeen.includes(levelId)) {
+    return save;
+  }
+  const next: SaveData = { ...save, tutorialSeen: [...save.tutorialSeen, levelId] };
+  writeSave(next);
+  return next;
 }
 
 export function updateSettings(save: SaveData, patch: Partial<Settings>): SaveData {
