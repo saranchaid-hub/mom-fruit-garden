@@ -18,7 +18,7 @@ export interface LevelSession {
   outcome: 'continue' | 'won' | 'lost';
 }
 
-const MAX_BOARD_GEN_ATTEMPTS = 200;
+const MAX_BOARD_GEN_ATTEMPTS = 3000;
 const DEFAULT_HAMMERS = 3;
 
 function generateInitialBoard(config: LevelConfig, rng: Rng, nextId: () => number): Board {

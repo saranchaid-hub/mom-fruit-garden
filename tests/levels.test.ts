@@ -5,21 +5,27 @@ import { hasValidMove } from '../src/core/moves';
 import { createSession } from '../src/core/session';
 
 describe('level data', () => {
-  it('has 12 levels numbered sequentially from 1', () => {
-    expect(ALL_LEVELS).toHaveLength(12);
-    expect(ALL_LEVELS.map((l) => l.id)).toEqual(Array.from({ length: 12 }, (_, i) => i + 1));
+  it('has 60 levels numbered sequentially from 1', () => {
+    expect(ALL_LEVELS).toHaveLength(60);
+    expect(ALL_LEVELS.map((l) => l.id)).toEqual(Array.from({ length: 60 }, (_, i) => i + 1));
   });
 
   it.each(ALL_LEVELS)('level $id passes schema validation', (level) => {
     expect(validateLevel(level)).toEqual([]);
   });
 
-  it.each(ALL_LEVELS)('level $id generates a solvable starting board', (level) => {
+  const STRESS_SEEDS = Array.from({ length: 50 }, (_, i) => i * 7919 + 1);
+
+  it.each(ALL_LEVELS)('level $id generates a solvable starting board across many seeds', (level) => {
     // createSession retries internally until it finds a board with no
-    // pre-existing matches and at least one valid move, or throws — so a
-    // successful call here is itself the guarantee.
-    const session = createSession(level, 12345);
-    expect(hasValidMove(session.board)).toBe(true);
+    // pre-existing matches and at least one valid move, or throws. Checking
+    // many seeds (not just one fixed seed) matters: some level shapes have a
+    // per-attempt success rate low enough that a single lucky seed can pass
+    // while ~1 in 65 real (Date.now()-seeded) plays would fail.
+    for (const seed of STRESS_SEEDS) {
+      const session = createSession(level, seed);
+      expect(hasValidMove(session.board)).toBe(true);
+    }
   });
 
   it.each(ALL_LEVELS)('level $id star thresholds are ascending', (level) => {

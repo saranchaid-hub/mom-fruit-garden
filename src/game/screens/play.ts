@@ -19,6 +19,22 @@ export interface PlayCallbacks {
 
 const HINT_IDLE_MS = 8000;
 const HAMMER_COUNT = 3;
+const BOARD_GEN_RETRY_ATTEMPTS = 5;
+
+// Board generation is randomized and can (rarely) fail to find a valid
+// starting layout for a given seed. Retrying with a fresh seed is much
+// simpler than trying to guarantee every possible seed works up front.
+function createSessionWithRetry(level: LevelDef, hammerCount: number) {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < BOARD_GEN_RETRY_ATTEMPTS; attempt++) {
+    try {
+      return createSession(level, Date.now() + attempt, hammerCount);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
 
 function playSoundsFor(phases: TurnEvent[][], justWon: boolean): void {
   if (justWon) {
@@ -40,7 +56,7 @@ export function startPlayScreen(
   callbacks: PlayCallbacks,
   settings: Settings,
 ): () => void {
-  const session = createSession(level, Date.now(), HAMMER_COUNT);
+  const session = createSessionWithRetry(level, HAMMER_COUNT);
   let renderPieces: Map<number, RenderPiece> = createRenderPieces(session.board);
   let selected: Pos | null = null;
   let locked = false;

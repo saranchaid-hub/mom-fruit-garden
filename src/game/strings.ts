@@ -21,6 +21,7 @@ export const STRINGS = {
   movesLeft: 'ตาที่เหลือ',
   score: 'คะแนน',
   level: (id: number) => `ด่าน ${id}`,
+  gardenName: (sectionNumber: number) => `สวนที่ ${sectionNumber}`,
   locked: 'ยังไม่เปิด',
   hammerLabel: 'ค้อน',
   mercyBanner: 'โบนัสพิเศษ +5 ตา!',

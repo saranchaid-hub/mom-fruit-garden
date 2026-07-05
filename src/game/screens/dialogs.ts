@@ -14,6 +14,10 @@ export function showWinDialog(root: HTMLElement, stars: Stars, score: number, on
   const dialog = document.createElement('div');
   dialog.className = 'dialog';
 
+  const confetti = document.createElement('div');
+  confetti.className = 'dialog-confetti';
+  confetti.textContent = '🎉 🌟 🎉';
+
   const heading = document.createElement('h2');
   heading.textContent = STRINGS.winTitle;
 
@@ -32,7 +36,7 @@ export function showWinDialog(root: HTMLElement, stars: Stars, score: number, on
     onContinue();
   });
 
-  dialog.append(heading, starsEl, scoreEl, continueButton);
+  dialog.append(confetti, heading, starsEl, scoreEl, continueButton);
   overlay.appendChild(dialog);
   root.appendChild(overlay);
 }

@@ -37,6 +37,11 @@ body {
   padding: 12px;
 }
 
+#screen-map {
+  justify-content: flex-start;
+  padding: 0;
+}
+
 #board {
   touch-action: none;
   max-width: 100vw;
@@ -84,15 +89,30 @@ button:disabled {
   text-align: center;
 }
 
+.map-scroll {
+  width: 100%;
+  max-width: 520px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 76px 16px 32px;
+}
+
+.garden-section {
+  margin-bottom: 28px;
+}
+
+.garden-heading {
+  font-size: 24px;
+  text-align: center;
+  margin: 0 0 14px;
+  color: #a05a2c;
+}
+
 .level-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 16px;
-  max-width: 500px;
   width: 100%;
-  overflow-y: auto;
-  max-height: 100%;
-  padding: 8px;
 }
 
 .level-button {
@@ -104,6 +124,11 @@ button:disabled {
   background: #ffe8bf;
   padding: 12px;
   min-height: 88px;
+  box-shadow: 0 2px 0 #e0b978;
+}
+
+.level-button:disabled {
+  box-shadow: none;
 }
 
 .level-number {
@@ -165,6 +190,26 @@ button:disabled {
 .dialog-stars {
   font-size: 36px;
   color: #d68c00;
+  animation: star-pop 0.45s ease;
+}
+
+.dialog-confetti {
+  font-size: 22px;
+  letter-spacing: 4px;
+}
+
+@keyframes star-pop {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .gear-button {
