@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { resolveHammer, resolveSwap } from '../src/core/resolve';
+import { fireRemainingSpecials, resolveHammer, resolveSwap } from '../src/core/resolve';
 import { createRng } from '../src/core/rng';
+import { hasMatches } from '../src/core/match';
 import { cloneTestBoard, parseTestBoard, resetAutoId } from './helpers';
 
 beforeEach(() => resetAutoId());
@@ -130,5 +131,52 @@ describe('special spawn caught in a same-turn blast', () => {
         expect(cell.piece.fruit).not.toBeNull();
       }
     }
+  });
+});
+
+describe('fireRemainingSpecials', () => {
+  it('keeps firing rounds until a cascade-spawned special is gone too', () => {
+    // Bottom row (y=3) is the only special: a stripedH mango at (2,3). Firing
+    // it clears the whole row. Row y=2 has a real gap (not a hole) at column
+    // 2, with three grapes at columns 0, 1, and 3, plus a grape sitting
+    // directly above the gap at (2,1). Pre-fire, none of that lines up into
+    // a match: the row-2 grapes are split by the gap, and the row-1 grape is
+    // one row removed from all of them.
+    //
+    // Once the stripedH clears row 3, gravity applies per column. Columns
+    // 0, 1, 3, 4 each drop by exactly one row (row 2 -> row 3, row 1 -> row
+    // 2, ...). Column 2 has no piece at row 2 to begin with, so its row-1
+    // grape falls two rows, landing at row 3 as well. The result is that the
+    // four grapes converge onto row 3 at columns 0-3 — a horizontal 4-run
+    // assembled purely from gravity on pre-existing pieces, independent of
+    // whatever the seeded rng refills at the top. That match spawns a new
+    // striped special (classifySpawn: a run of 4 -> stripedV), which the old
+    // single-pass fireRemainingSpecials never fires — it would survive on
+    // the board. The fixed multi-round version keeps looping and fires it
+    // too, leaving zero specials behind.
+    const board = parseTestBoard([
+      'W O G O W',
+      'O M G M O',
+      'G G . G W',
+      'M W Mh W M',
+    ]);
+    const fruits = ['mango', 'orange', 'grape', 'watermelon'] as const;
+
+    expect(hasMatches(board)).toBe(false);
+    const specialCount = board.cells.filter((c) => c.piece && c.piece.special !== 'none').length;
+    expect(specialCount).toBe(1);
+
+    const result = fireRemainingSpecials(board, createRng(1), idGen(), [...fruits]);
+
+    for (const cell of board.cells) {
+      if (cell.piece) {
+        expect(cell.piece.special).toBe('none');
+      }
+    }
+
+    const events = result.phases.flat();
+    expect(events.filter((e) => e.kind === 'specialSpawn').length).toBeGreaterThan(0);
+    expect(events.filter((e) => e.kind === 'specialFire').length).toBeGreaterThanOrEqual(2);
+    expect(result.scoreDelta).toBeGreaterThan(0);
   });
 });

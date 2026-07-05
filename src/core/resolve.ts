@@ -13,6 +13,7 @@ import {
 import type { Board, FallMove, FruitKind, Piece, Pos, ResolveResult, Spawn, SpecialType, TurnEvent } from './types';
 
 const POINTS_PER_PIECE = 10;
+const MAX_VICTORY_BLAST_ROUNDS = 10;
 
 interface Activation {
   clearedCells: Pos[];
@@ -283,6 +284,13 @@ export function resolveSwap(
  * Fires every special piece still on the board — the celebratory "victory
  * blast" after a level is won, so earned specials never feel wasted. Their
  * clears (and any cascade that follows) score normally on top of the win.
+ *
+ * A single pass isn't enough: the trailing cascade can itself assemble a new
+ * 4+/L/T match as the board settles and refills, minting a fresh special via
+ * planMatchClears/applySpawns that nothing has fired yet. So this keeps
+ * looping — scan, fire, settle, cascade — round after round until a scan
+ * turns up no specials at all, with a safety cap in case refill randomness
+ * keeps re-seeding new ones forever.
  */
 export function fireRemainingSpecials(
   board: Board,
@@ -290,25 +298,38 @@ export function fireRemainingSpecials(
   nextId: () => number,
   fruits: FruitKind[],
 ): ResolveResult {
-  const seeds: Pos[] = [];
-  for (let y = 0; y < board.height; y++) {
-    for (let x = 0; x < board.width; x++) {
-      const piece = cellAt(board, { x, y }).piece;
-      if (piece && piece.special !== 'none') {
-        seeds.push({ x, y });
+  const phases: TurnEvent[][] = [];
+  let scoreDelta = 0;
+  let firstRound = true;
+
+  for (let round = 0; round < MAX_VICTORY_BLAST_ROUNDS; round++) {
+    const seeds: Pos[] = [];
+    for (let y = 0; y < board.height; y++) {
+      for (let x = 0; x < board.width; x++) {
+        const piece = cellAt(board, { x, y }).piece;
+        if (piece && piece.special !== 'none') {
+          seeds.push({ x, y });
+        }
       }
     }
+    if (seeds.length === 0) {
+      break;
+    }
+    firstRound = false;
+
+    const activation = activateAndClear(board, seeds, rng, fruits);
+    scoreDelta += emitActivationPhase(activation, 1, phases);
+    settleBoard(board, rng, nextId, fruits, phases);
+    scoreDelta += runCascade(board, rng, nextId, fruits, phases, 2, []);
   }
-  if (seeds.length === 0) {
+  // Reaching the cap without exhausting specials is left alone rather than
+  // thrown: the level is already won, and leftover specials after this many
+  // rounds are astronomically unlikely and harmless.
+
+  if (firstRound) {
     return { phases: [], scoreDelta: 0, movesUsed: 0 };
   }
-
-  const phases: TurnEvent[][] = [];
-  const activation = activateAndClear(board, seeds, rng, fruits);
-  const points = emitActivationPhase(activation, 1, phases);
-  settleBoard(board, rng, nextId, fruits, phases);
-  const cascadeScore = runCascade(board, rng, nextId, fruits, phases, 2, []);
-  return { phases, scoreDelta: points + cascadeScore, movesUsed: 0 };
+  return { phases, scoreDelta, movesUsed: 0 };
 }
 
 export function resolveHammer(
