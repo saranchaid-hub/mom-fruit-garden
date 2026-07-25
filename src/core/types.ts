@@ -1,6 +1,6 @@
 export type FruitKind = 'mango' | 'orange' | 'grape' | 'watermelon' | 'mangosteen' | 'banana';
 
-export type SpecialType = 'none' | 'stripedH' | 'stripedV' | 'wrapped' | 'colorBomb';
+export type SpecialType = 'none' | 'stripedH' | 'stripedV' | 'wrapped' | 'colorBomb' | 'rain';
 
 export interface Piece {
   id: number;
@@ -13,6 +13,7 @@ export type CellKind = 'normal' | 'hole';
 export interface Cell {
   kind: CellKind;
   jelly: boolean;
+  flower: boolean;
   piece: Piece | null;
 }
 
@@ -62,6 +63,7 @@ export type TurnEvent =
   | { kind: 'swap'; a: Pos; b: Pos; illegal: boolean }
   | { kind: 'clear'; cells: Pos[]; byFruit: Partial<Record<FruitKind, number>> }
   | { kind: 'jellyClear'; cells: Pos[] }
+  | { kind: 'flowerBloom'; cells: Pos[] }
   | { kind: 'specialSpawn'; at: Pos; piece: Piece }
   | { kind: 'specialFire'; at: Pos; special: SpecialType; affected: Pos[] }
   | { kind: 'comboFire'; a: Pos; b: Pos; affected: Pos[] }

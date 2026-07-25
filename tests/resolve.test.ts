@@ -93,6 +93,47 @@ describe('resolveHammer', () => {
     const jellyEvent = result.phases[0]?.find((e) => e.kind === 'jellyClear');
     expect(jellyEvent).toMatchObject({ cells: [{ x: 0, y: 0 }] });
   });
+
+  it('the hammer path also blooms a flower under the destroyed piece', () => {
+    const board = parseTestBoard(['MF O G', 'O G W', 'G W O']);
+    const result = resolveHammer(board, { x: 0, y: 0 }, createRng(3), idGen(), ['mango', 'orange', 'grape', 'watermelon']);
+    const bloomEvent = result.phases[0]?.find((e) => e.kind === 'flowerBloom');
+    expect(bloomEvent).toMatchObject({ cells: [{ x: 0, y: 0 }] });
+    expect(board.cells[0]?.flower).toBe(false);
+  });
+});
+
+describe('flower cells', () => {
+  it('a match clearing a flower cell emits flowerBloom and turns the flag off', () => {
+    const board = parseTestBoard(['O MF M', 'M O G', 'G O M']);
+    const result = resolveSwap(board, { x: 0, y: 0 }, { x: 0, y: 1 }, createRng(7), idGen(), ['mango', 'orange', 'grape']);
+    const bloom = result.phases.flat().find((e) => e.kind === 'flowerBloom');
+    expect(bloom).toMatchObject({ cells: [{ x: 1, y: 0 }] });
+    expect(board.cells[1]?.flower).toBe(false);
+  });
+
+  it('two flowers cleared by the same match both emit in the same flowerBloom event', () => {
+    const board = parseTestBoard(['O MF MF', 'M O G', 'G O M']);
+    const result = resolveSwap(board, { x: 0, y: 0 }, { x: 0, y: 1 }, createRng(7), idGen(), ['mango', 'orange', 'grape']);
+    const bloom = result.phases.flat().find((e) => e.kind === 'flowerBloom');
+    expect(bloom && 'cells' in bloom ? bloom.cells : []).toEqual(
+      expect.arrayContaining([{ x: 1, y: 0 }, { x: 2, y: 0 }]),
+    );
+    expect(board.cells[1]?.flower).toBe(false);
+    expect(board.cells[2]?.flower).toBe(false);
+  });
+
+  it('a cell whose flower already bloomed does not bloom again', () => {
+    const board = parseTestBoard(['O MF M', 'M O G', 'G O M']);
+    resolveSwap(board, { x: 0, y: 0 }, { x: 0, y: 1 }, createRng(7), idGen(), ['mango', 'orange', 'grape']);
+    expect(board.cells[1]?.flower).toBe(false);
+
+    // Board has since been refilled by settle/cascade; hammer the same cell
+    // again — whatever piece is there now, the cell's flower flag is spent.
+    const result = resolveHammer(board, { x: 1, y: 0 }, createRng(3), idGen(), ['mango', 'orange', 'grape']);
+    const bloom = result.phases.flat().find((e) => e.kind === 'flowerBloom');
+    expect(bloom).toBeUndefined();
+  });
 });
 
 describe('special spawn caught in a same-turn blast', () => {

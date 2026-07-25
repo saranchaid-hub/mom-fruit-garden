@@ -20,6 +20,7 @@ interface Activation {
   fireEvents: TurnEvent[];
   byFruit: Partial<Record<FruitKind, number>>;
   jellyCells: Pos[];
+  flowerCells: Pos[];
 }
 
 /**
@@ -68,6 +69,7 @@ function activateAndClear(board: Board, seedCells: Pos[], rng: Rng, fruits: Frui
 
   const byFruit: Partial<Record<FruitKind, number>> = {};
   const jellyCells: Pos[] = [];
+  const flowerCells: Pos[] = [];
   for (const pos of clearedCells) {
     const cell = cellAt(board, pos);
     if (cell.piece) {
@@ -80,9 +82,13 @@ function activateAndClear(board: Board, seedCells: Pos[], rng: Rng, fruits: Frui
       cell.jelly = false;
       jellyCells.push(pos);
     }
+    if (cell.flower) {
+      cell.flower = false;
+      flowerCells.push(pos);
+    }
   }
 
-  return { clearedCells, fireEvents, byFruit, jellyCells };
+  return { clearedCells, fireEvents, byFruit, jellyCells, flowerCells };
 }
 
 interface PendingSpawn {
@@ -194,6 +200,9 @@ function emitActivationPhase(
   const clearPhase: TurnEvent[] = [...extraEvents, { kind: 'clear', cells: activation.clearedCells, byFruit: activation.byFruit }];
   if (activation.jellyCells.length > 0) {
     clearPhase.push({ kind: 'jellyClear', cells: activation.jellyCells });
+  }
+  if (activation.flowerCells.length > 0) {
+    clearPhase.push({ kind: 'flowerBloom', cells: activation.flowerCells });
   }
   clearPhase.push(...activation.fireEvents);
   const points = activation.clearedCells.length * POINTS_PER_PIECE * chain;
@@ -352,6 +361,9 @@ export function resolveHammer(
   const clearPhase: TurnEvent[] = [{ kind: 'clear', cells: activation.clearedCells, byFruit: activation.byFruit }];
   if (activation.jellyCells.length > 0) {
     clearPhase.push({ kind: 'jellyClear', cells: activation.jellyCells });
+  }
+  if (activation.flowerCells.length > 0) {
+    clearPhase.push({ kind: 'flowerBloom', cells: activation.flowerCells });
   }
   clearPhase.push(...activation.fireEvents);
   const points = bonusCells * POINTS_PER_PIECE;

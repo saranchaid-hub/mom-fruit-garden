@@ -241,6 +241,7 @@ export async function playPhases(
           case 'specialSpawn':
             return playSpecialSpawn(event, renderPieces);
           case 'jellyClear':
+          case 'flowerBloom':
           case 'specialFire':
           case 'comboFire':
           case 'score':

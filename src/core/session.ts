@@ -50,9 +50,12 @@ export function createSession(config: LevelConfig, seed: number, hammerCount = D
   };
 }
 
-function tallyClear(phases: TurnEvent[][]): { byFruit: Partial<Record<FruitKind, number>>; jellyClearedCount: number } {
+function tallyClear(
+  phases: TurnEvent[][],
+): { byFruit: Partial<Record<FruitKind, number>>; jellyClearedCount: number; flowerBloomCount: number } {
   const byFruit: Partial<Record<FruitKind, number>> = {};
   let jellyClearedCount = 0;
+  let flowerBloomCount = 0;
   for (const phase of phases) {
     for (const event of phase) {
       if (event.kind === 'clear') {
@@ -61,21 +64,29 @@ function tallyClear(phases: TurnEvent[][]): { byFruit: Partial<Record<FruitKind,
         }
       } else if (event.kind === 'jellyClear') {
         jellyClearedCount += event.cells.length;
+      } else if (event.kind === 'flowerBloom') {
+        flowerBloomCount += event.cells.length;
       }
     }
   }
-  return { byFruit, jellyClearedCount };
+  return { byFruit, jellyClearedCount, flowerBloomCount };
 }
 
 function finalize(session: LevelSession, result: ResolveResult, nextId: () => number): TurnResult {
   session.score += result.scoreDelta;
-  const { byFruit, jellyClearedCount } = tallyClear(result.phases);
+  const { byFruit, jellyClearedCount, flowerBloomCount } = tallyClear(result.phases);
   session.objectiveProgress = advanceObjective(session.objectiveProgress, session.config.objective, {
     byFruit,
     jellyClearedCount,
     totalScore: session.score,
   });
   session.movesLeft = Math.max(0, session.movesLeft - result.movesUsed);
+  // Flower bonus moves must land before the out-of-moves check below: a
+  // bloom on the player's last move has to be able to rescue them, not be
+  // credited too late to matter.
+  if (flowerBloomCount > 0) {
+    session.movesLeft += flowerBloomCount;
+  }
 
   if (session.outcome === 'continue') {
     // Win is checked before out-of-moves: completing the objective on the

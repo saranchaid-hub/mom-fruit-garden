@@ -32,6 +32,15 @@ describe('level data', () => {
     expect(level.starScores[0]).toBeLessThan(level.starScores[1]);
   });
 
+  it('accepts F (flower) in a layout but still rejects unknown characters', () => {
+    const base = { ...(getLevel(1) as object) } as Parameters<typeof validateLevel>[0];
+    const flowerLevel = { ...base, width: 3, height: 2, layout: ['.F.', 'XJ.'] };
+    expect(validateLevel(flowerLevel)).toEqual([]);
+
+    const bogusLevel = { ...base, width: 3, height: 2, layout: ['.Z.', '...'] };
+    expect(validateLevel(bogusLevel).join(' ')).toContain('invalid character');
+  });
+
   it('getLevel returns the matching level and throws for an unknown id', () => {
     expect(getLevel(1).id).toBe(1);
     expect(() => getLevel(999)).toThrow();

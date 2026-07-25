@@ -164,3 +164,76 @@ describe('victory blast', () => {
     expect(fires).toEqual([]);
   });
 });
+
+describe('flower bonus moves', () => {
+  const smallConfig: LevelConfig = {
+    width: 3,
+    height: 3,
+    fruits: ['mango', 'orange', 'grape'],
+    moves: 10,
+    objective: { type: 'score', target: 1_000_000 },
+    starScores: [500, 1000],
+  };
+
+  it('clearing a flower cell grants exactly +1 move, isolated via the hammer (which itself costs no move)', () => {
+    const session = createSession(baseConfig, 9);
+    session.board = parseTestBoard([
+      'MF O G W M O',
+      'O G W M O G',
+      'G W M O G W',
+      'W M O G W M',
+      'O G W M O G',
+      'G W M O G W',
+    ]);
+    const movesBefore = session.movesLeft;
+    const result = useHammer(session, { x: 0, y: 0 });
+    expect(result.phases.flat().some((e) => e.kind === 'flowerBloom')).toBe(true);
+    expect(session.movesLeft).toBe(movesBefore + 1);
+  });
+
+  it('two flowers cleared in one turn grant +2 moves (net +1 once the turn\'s own move is spent)', () => {
+    const session = createSession(smallConfig, 1);
+    session.board = parseTestBoard(['O MF MF', 'M O G', 'G O M']);
+    session.objectiveProgress = createObjectiveProgress(smallConfig.objective, session.board);
+    const movesBefore = session.movesLeft;
+
+    const result = trySwap(session, { x: 0, y: 0 }, { x: 0, y: 1 });
+    expect(result.movesUsed).toBe(1);
+    const bloom = result.phases.flat().find((e) => e.kind === 'flowerBloom');
+    expect(bloom && 'cells' in bloom ? bloom.cells : []).toHaveLength(2);
+    expect(session.movesLeft).toBe(movesBefore - 1 + 2);
+  });
+
+  it('a flower already bloomed does not grant a second bonus', () => {
+    const session = createSession(smallConfig, 1);
+    session.board = parseTestBoard(['O MF M', 'M O G', 'G O M']);
+    session.objectiveProgress = createObjectiveProgress(smallConfig.objective, session.board);
+
+    const movesBefore = session.movesLeft;
+    const result1 = trySwap(session, { x: 0, y: 0 }, { x: 0, y: 1 });
+    expect(result1.phases.flat().some((e) => e.kind === 'flowerBloom')).toBe(true);
+    expect(session.movesLeft).toBe(movesBefore); // -1 used, +1 bloom, net 0
+
+    // Hammer the same cell again (costs no move) — the flag is already
+    // spent, so no second flowerBloom and no second bonus move.
+    const movesBeforeSecond = session.movesLeft;
+    const result2 = useHammer(session, { x: 1, y: 0 });
+    expect(result2.phases.flat().some((e) => e.kind === 'flowerBloom')).toBe(false);
+    expect(session.movesLeft).toBe(movesBeforeSecond);
+  });
+
+  it('a flower bloom on the last move rescues the player instead of losing', () => {
+    const config: LevelConfig = { ...smallConfig, moves: 1 };
+    const session = createSession(config, 1);
+    session.board = parseTestBoard(['O MF M', 'M O G', 'G O M']);
+    session.objectiveProgress = createObjectiveProgress(config.objective, session.board);
+
+    const result = trySwap(session, { x: 0, y: 0 }, { x: 0, y: 1 });
+    expect(result.movesUsed).toBe(1);
+    expect(result.phases.flat().some((e) => e.kind === 'flowerBloom')).toBe(true);
+    // Without the rescue, movesLeft would clamp to 0 and the session would
+    // be lost. The bloom's +1 must land before that check.
+    expect(session.outcome).toBe('continue');
+    expect(session.movesLeft).toBe(1);
+  });
+});

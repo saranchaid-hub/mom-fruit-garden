@@ -31,6 +31,15 @@ describe('classifySpawn', () => {
     maxVerticalRun,
   });
 
+  // Cell count matters for rain, unlike the other checks above (which only
+  // look at maxHorizontalRun/maxVerticalRun) — so this helper lets tests
+  // control cells.length directly instead of always being 1 like group().
+  const groupOfSize = (cellCount: number, maxHorizontalRun: number, maxVerticalRun: number): MatchGroup => ({
+    cells: Array.from({ length: cellCount }, (_, i) => ({ x: i, y: 0 })),
+    maxHorizontalRun,
+    maxVerticalRun,
+  });
+
   it('returns none for a plain 3-run', () => {
     expect(classifySpawn(group(3, 0))).toBe('none');
     expect(classifySpawn(group(0, 3))).toBe('none');
@@ -56,6 +65,24 @@ describe('classifySpawn', () => {
 
   it('prioritizes colorBomb over wrapped when a 5-run also has a perpendicular arm', () => {
     expect(classifySpawn(group(5, 3))).toBe('colorBomb');
+  });
+
+  it('returns rain for a 6+ cell group, even one shaped like an L/T that would otherwise be wrapped', () => {
+    expect(classifySpawn(groupOfSize(6, 3, 3))).toBe('rain');
+    expect(classifySpawn(groupOfSize(7, 4, 3))).toBe('rain');
+  });
+
+  it('a 5-cell straight run still yields colorBomb, not rain, even though 5 < 6', () => {
+    expect(classifySpawn(groupOfSize(5, 5, 0))).toBe('colorBomb');
+  });
+
+  it('a 5-cell L/T shape (below the rain threshold) still yields wrapped', () => {
+    expect(classifySpawn(groupOfSize(5, 3, 3))).toBe('wrapped');
+  });
+
+  it('a plain 4-run (well below the rain threshold) still yields striped', () => {
+    expect(classifySpawn(groupOfSize(4, 4, 0))).toBe('stripedV');
+    expect(classifySpawn(groupOfSize(4, 0, 4))).toBe('stripedH');
   });
 });
 
@@ -114,6 +141,20 @@ describe('areaForSpecial', () => {
 
   it('colorBomb has no inherent area of its own', () => {
     expect(areaForSpecial(board, { x: 0, y: 0 }, 'colorBomb')).toEqual([]);
+  });
+
+  it('rain clears the whole row and whole column, deduped at the shared cell', () => {
+    const area = areaForSpecial(board, { x: 1, y: 1 }, 'rain');
+    expect(area).toHaveLength(5); // 3-wide row + 3-tall col - 1 shared cell
+    expect(area).toEqual(
+      expect.arrayContaining([
+        { x: 0, y: 1 },
+        { x: 1, y: 1 },
+        { x: 2, y: 1 },
+        { x: 1, y: 0 },
+        { x: 1, y: 2 },
+      ]),
+    );
   });
 });
 
@@ -226,6 +267,54 @@ describe('comboBlast', () => {
     const { seedCells } = comboBlast(board, { x: 0, y: 0 }, { x: 2, y: 1 }, pieceA, pieceB);
     expect(seedCells).toHaveLength(9);
   });
+
+  it('rain + rain unions the full row and column through each swapped position (same shape as striped + striped)', () => {
+    const board = parseTestBoard(['. . . . .', '. . . . .', '. . . . .', '. . . . .', '. . . . .']);
+    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'rain' };
+    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'rain' };
+    const a: Pos = { x: 1, y: 1 };
+    const b: Pos = { x: 2, y: 1 };
+    const { seedCells } = comboBlast(board, a, b, pieceA, pieceB);
+    expect(seedCells).toHaveLength(13);
+    expect(seedCells).toEqual(expect.arrayContaining([{ x: 4, y: 1 }, { x: 1, y: 4 }, { x: 2, y: 4 }]));
+  });
+
+  it('rain + striped falls into the same row/column-union fallback as rain + rain', () => {
+    const board = parseTestBoard(['. . . . .', '. . . . .', '. . . . .', '. . . . .', '. . . . .']);
+    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'rain' };
+    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'stripedV' };
+    const { seedCells } = comboBlast(board, { x: 1, y: 1 }, { x: 2, y: 1 }, pieceA, pieceB);
+    expect(seedCells).toHaveLength(13);
+  });
+
+  it('wrapped + rain clears 3 rows x 3 cols centered on the wrapped piece, which always contains rain\'s own row and column', () => {
+    const board = parseTestBoard(['. . . . .', '. . . . .', '. . . . .', '. . . . .', '. . . . .']);
+    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'wrapped' };
+    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'rain' };
+    const a: Pos = { x: 1, y: 1 };
+    const b: Pos = { x: 2, y: 1 };
+    const { seedCells } = comboBlast(board, a, b, pieceA, pieceB);
+    expect(seedCells).toHaveLength(21);
+    // At minimum, rain's own row (y=1) and column (x=2) are fully covered.
+    for (let x = 0; x < 5; x++) {
+      expect(seedCells).toEqual(expect.arrayContaining([{ x, y: 1 }]));
+    }
+    for (let y = 0; y < 5; y++) {
+      expect(seedCells).toEqual(expect.arrayContaining([{ x: 2, y }]));
+    }
+  });
+
+  it('color bomb + rain converts every cell of that fruit to rain and fires each one\'s row+column', () => {
+    const board = parseTestBoard(['CB Mr O', 'O G M', 'G O M']);
+    const pieceA = board.cells[0]?.piece as Piece;
+    const pieceB = board.cells[1]?.piece as Piece;
+    const { seedCells } = comboBlast(board, { x: 0, y: 0 }, { x: 1, y: 0 }, pieceA, pieceB);
+    // Every mango (at (1,0), (2,1), (2,2)) becomes rain and fires its own
+    // row + column; on this 3x3 board that union covers every cell.
+    expect(seedCells).toHaveLength(9);
+    expect(board.cells[1]?.piece?.special).toBe('rain');
+    expect(board.cells[2 * 3 + 2]?.piece?.special).toBe('rain');
+  });
 });
 
 describe('specials integration via resolveSwap', () => {
@@ -320,6 +409,10 @@ describe('combo consumes both swapped special pieces', () => {
     { name: 'color bomb + plain fruit', row: 'CB M O G' },
     { name: 'color bomb + striped', row: 'CB Mh O G' },
     { name: 'color bomb + wrapped', row: 'CB Mw O G' },
+    { name: 'rain + rain', row: 'Mr Or O G' },
+    { name: 'rain + striped', row: 'Mr Mh O G' },
+    { name: 'rain + wrapped', row: 'Mr Mw O G' },
+    { name: 'color bomb + rain', row: 'CB Mr O G' },
   ])('$name leaves neither swapped piece on the board', ({ row }) => {
     resetAutoId();
     const board = parseTestBoard([row, '. . . .', '. . . .', '. . . .']);
@@ -348,5 +441,30 @@ describe('hammer and specials', () => {
     const result = resolveHammer(board, { x: 0, y: 0 }, createRng(1), idGen(), ['mango', 'orange', 'grape', 'watermelon', 'banana']);
     const fire = result.phases.flat().find((e) => e.kind === 'specialFire');
     expect(fire).toMatchObject({ kind: 'specialFire', special: 'stripedH', at: { x: 0, y: 0 } });
+  });
+
+  it('firing a rain clears the full row and full column and nothing else', () => {
+    const board = parseTestBoard([
+      'M O Mr G B',
+      'O G W B M',
+      'G W O M W',
+      'W B M O G',
+      'B M G W O',
+    ]);
+    const fruits = ['mango', 'orange', 'grape', 'watermelon', 'banana'] as const;
+    const result = resolveHammer(board, { x: 2, y: 0 }, createRng(1), idGen(), [...fruits]);
+    const fire = result.phases.flat().find((e) => e.kind === 'specialFire');
+    expect(fire).toMatchObject({ kind: 'specialFire', special: 'rain', at: { x: 2, y: 0 } });
+
+    const clearEvent = result.phases[0]?.find((e) => e.kind === 'clear');
+    const clearedCells = clearEvent && 'cells' in clearEvent ? clearEvent.cells : [];
+    // 5-wide row + 5-tall col - 1 shared cell = 9, exactly row y=0 and column x=2.
+    expect(clearedCells).toHaveLength(9);
+    for (let x = 0; x < 5; x++) {
+      expect(clearedCells).toEqual(expect.arrayContaining([{ x, y: 0 }]));
+    }
+    for (let y = 0; y < 5; y++) {
+      expect(clearedCells).toEqual(expect.arrayContaining([{ x: 2, y }]));
+    }
   });
 });

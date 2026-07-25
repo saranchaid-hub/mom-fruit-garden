@@ -23,14 +23,18 @@ const SPECIAL_MODIFIERS: Record<string, SpecialType> = {
   h: 'stripedH',
   v: 'stripedV',
   w: 'wrapped',
+  r: 'rain',
 };
 
 /**
  * Parses rows of space-separated tokens into a Board for tests.
  * Tokens: a fruit letter (M/O/G/W/S/B) optionally followed by a special
- * modifier (h=stripedH, v=stripedV, w=wrapped), '.' for an empty normal
- * cell, 'X' for a hole, 'CB' for a color bomb (no fruit), and a trailing
- * 'J' for jelly (e.g. '.J', 'MJ', 'MhJ', 'CBJ').
+ * modifier (h=stripedH, v=stripedV, w=wrapped, r=rain), '.' for an empty
+ * normal cell, 'X' for a hole, 'CB' for a color bomb (no fruit), and
+ * trailing status letters 'J' for jelly and/or 'F' for flower, in either
+ * order (e.g. '.J', 'MJ', 'MhJ', 'CBJ', '.F', 'MF', 'MhF', 'MJF'). Only one
+ * of each is supported (at most one 'J' and one 'F' per token) — a cell
+ * doesn't need more than that today.
  */
 export function parseTestBoard(rows: string[]): Board {
   const grid = rows.map((row) => row.trim().split(/\s+/));
@@ -44,19 +48,31 @@ export function parseTestBoard(rows: string[]): Board {
     }
     for (const token of row) {
       if (token === 'X') {
-        cells.push({ kind: 'hole', jelly: false, piece: null });
+        cells.push({ kind: 'hole', jelly: false, flower: false, piece: null });
         continue;
       }
-      const jelly = token.endsWith('J');
-      const rest = jelly ? token.slice(0, -1) : token;
+      let rest = token;
+      let jelly = false;
+      let flower = false;
+      for (let i = 0; i < 2; i++) {
+        if (rest.endsWith('J') && !jelly) {
+          jelly = true;
+          rest = rest.slice(0, -1);
+        } else if (rest.endsWith('F') && !flower) {
+          flower = true;
+          rest = rest.slice(0, -1);
+        } else {
+          break;
+        }
+      }
 
       if (rest === '.') {
-        cells.push({ kind: 'normal', jelly, piece: null });
+        cells.push({ kind: 'normal', jelly, flower, piece: null });
         continue;
       }
       if (rest === 'CB') {
         const piece: Piece = { id: nextTestId(), fruit: null, special: 'colorBomb' };
-        cells.push({ kind: 'normal', jelly, piece });
+        cells.push({ kind: 'normal', jelly, flower, piece });
         continue;
       }
 
@@ -75,7 +91,7 @@ export function parseTestBoard(rows: string[]): Board {
         special = modifier;
       }
       const piece: Piece = { id: nextTestId(), fruit, special };
-      cells.push({ kind: 'normal', jelly, piece });
+      cells.push({ kind: 'normal', jelly, flower, piece });
     }
   }
 
@@ -89,6 +105,7 @@ export function cloneTestBoard(board: Board): Board {
     cells: board.cells.map((cell) => ({
       kind: cell.kind,
       jelly: cell.jelly,
+      flower: cell.flower,
       piece: cell.piece ? { ...cell.piece } : null,
     })),
   };

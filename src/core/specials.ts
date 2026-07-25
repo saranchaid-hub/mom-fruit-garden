@@ -5,14 +5,21 @@ import type { Board, FruitKind, Piece, Pos, SpecialType, TurnEvent } from './typ
 
 /**
  * Classifies what special (if any) a matched group earns. Checked in this
- * priority order: a run of 5+ always wins (colorBomb), then any group with
- * both a horizontal and vertical run (an L/T shape) becomes wrapped even if
- * one arm is long, and only a plain single-orientation run of 4 becomes
- * striped. A run of exactly 3 earns nothing.
+ * priority order: a run of 5+ always wins (colorBomb) — this is checked
+ * first so a long straight run still yields a colorBomb even if the group
+ * also happens to have 6+ cells some other way. Next, any group with 6 or
+ * more cells (regardless of shape — a big L/T/blob) becomes rain; a run of
+ * 5 straight is exactly 5 cells so it never reaches this check. Then any
+ * remaining group with both a horizontal and vertical run (an L/T shape)
+ * becomes wrapped even if one arm is long, and only a plain single-
+ * orientation run of 4 becomes striped. A run of exactly 3 earns nothing.
  */
 export function classifySpawn(group: MatchGroup): SpecialType {
   if (group.maxHorizontalRun >= 5 || group.maxVerticalRun >= 5) {
     return 'colorBomb';
+  }
+  if (group.cells.length >= 6) {
+    return 'rain';
   }
   if (group.maxHorizontalRun >= 3 && group.maxVerticalRun >= 3) {
     return 'wrapped';
@@ -146,6 +153,8 @@ export function areaForSpecial(board: Board, at: Pos, special: SpecialType): Pos
       return columnCells(board, at.x);
     case 'wrapped':
       return blockCells(board, at, 1);
+    case 'rain':
+      return uniquePositions([...rowCells(board, at.y), ...columnCells(board, at.x)]);
     case 'colorBomb':
     case 'none':
       return [];
@@ -184,6 +193,26 @@ export interface ComboResult {
  * clears that fruit twice" — this fires each effect once. The double-fire
  * flourish is easy to layer on later (wrap the call site in a repeat) but
  * wasn't worth the added cascade-loop complexity for a first pass.
+ *
+ * Rain needs no dedicated branch here: every existing branch below is
+ * already written in terms of *positions* (row/column/block around a and
+ * b), not orientation, so rain — whose own area is just "row + column of
+ * its own cell" — naturally falls out correct wherever it lands:
+ *   - rain + colorBomb: caught by the generic "colorBomb + striped" branch,
+ *     which converts every piece of the other's fruit to match
+ *     `other.special` and fires each with `areaForSpecial`. Since
+ *     `areaForSpecial('rain', ...)` is defined, every same-fruit piece
+ *     becomes rain and fires its own row+column — the simplest sensible
+ *     reading of "the bomb spreads the other piece's power across a fruit."
+ *   - rain + wrapped: caught by the generic wrapped branch, which clears
+ *     3 rows x 3 cols centered on the wrapped piece. Because the swap
+ *     partners are always orthogonally adjacent, that 3x3-rows/cols block
+ *     always fully contains rain's own row and column — "at minimum" is
+ *     satisfied for free.
+ *   - rain + rain, rain + striped: caught by the final fallback below,
+ *     which already unions the full row and column through *both* swapped
+ *     positions regardless of orientation — exactly rain's own area
+ *     definition, doubled. No special-casing needed.
  */
 export function comboBlast(board: Board, a: Pos, b: Pos, pieceA: Piece, pieceB: Piece): ComboResult {
   const event = (affected: Pos[]): Extract<TurnEvent, { kind: 'comboFire' }> => ({ kind: 'comboFire', a, b, affected });
@@ -208,8 +237,9 @@ export function comboBlast(board: Board, a: Pos, b: Pos, pieceA: Piece, pieceB: 
       return { seedCells: affected, comboEvent: event(affected) };
     }
 
-    // other.special is stripedH or stripedV: convert every piece of that
-    // same fruit to match this orientation, then fire all of them at once.
+    // other.special is stripedH, stripedV, or rain: stamp every piece of
+    // that same fruit with the partner's power, then fire all of them at
+    // once. Works for rain unchanged because areaForSpecial covers it.
     const orientation = other.special;
     const targets = other.fruit ? cellsOfFruit(board, other.fruit) : [];
     const affectedSets: Pos[] = [];
@@ -235,7 +265,11 @@ export function comboBlast(board: Board, a: Pos, b: Pos, pieceA: Piece, pieceB: 
     return { seedCells: affected, comboEvent: event(affected) };
   }
 
-  // Both striped, either orientation.
+  // Neither piece is colorBomb or wrapped, so both are striped (either
+  // orientation) and/or rain. This union of the full row+column through each
+  // swapped position is exactly right for that whole set: two striped pieces
+  // regardless of orientation, and rain's own area is precisely "row+column
+  // of its own cell" — so it needs no separate case.
   const affected = uniquePositions([
     ...rowCells(board, a.y),
     ...columnCells(board, a.x),

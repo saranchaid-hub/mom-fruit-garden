@@ -193,11 +193,14 @@ export function drawSpecialGlow(
 }
 
 /**
- * Drawn on top of a fruit sprite for stripedH/stripedV/wrapped. Color bomb
- * has no fruit to overlay (its fruit is null) and is drawn standalone via
- * drawColorBomb instead. Stripes and the wrapper are two-tone (dark under
- * white) so they stay visible on both light fruits (banana) and dark ones
- * (mangosteen).
+ * Drawn on top of a fruit sprite for stripedH/stripedV/wrapped/rain. Color
+ * bomb has no fruit to overlay (its fruit is null) and is drawn standalone
+ * via drawColorBomb instead. Stripes, the wrapper, and rain's cross are all
+ * two-tone (dark under white) so they stay visible on both light fruits
+ * (banana) and dark ones (mangosteen). Rain draws as a single thick cross
+ * through the center — deliberately bolder and simpler than the three thin
+ * parallel stripe lines, so it reads as a distinct special at a glance
+ * rather than "striped both ways".
  */
 export function drawSpecialOverlay(
   ctx: CanvasRenderingContext2D,
@@ -241,6 +244,25 @@ export function drawSpecialOverlay(
     ctx.lineWidth = Math.max(1, size * 0.04);
     roundRect(ctx, cx - half, cy - half, half * 2, half * 2, size * 0.12);
     ctx.stroke();
+  } else if (special === 'rain') {
+    const half = r * 0.9;
+    const strokeCross = (color: string, width: number): void => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = Math.max(1, width);
+      ctx.beginPath();
+      ctx.moveTo(cx - half, cy);
+      ctx.lineTo(cx + half, cy);
+      ctx.moveTo(cx, cy - half);
+      ctx.lineTo(cx, cy + half);
+      ctx.stroke();
+    };
+    // Same stroke weight as the stripes: rain reads as different because
+    // it is one cross rather than three parallel lines, so it does not need
+    // to be thicker — and a thicker cross buried the fruit silhouette
+    // underneath, which players still need in order to plan matches
+    // (ADR-0004: fruits must stay distinguishable by shape).
+    strokeCross('rgba(60, 35, 20, 0.85)', size * 0.1);
+    strokeCross('rgba(255, 255, 255, 0.95)', size * 0.05);
   }
   ctx.restore();
 }

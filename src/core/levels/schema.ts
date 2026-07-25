@@ -27,8 +27,8 @@ export function validateLevel(level: LevelDef): string[] {
       if (row.length !== level.width) {
         errors.push(`${tag}: layout row ${i} has length ${row.length}, expected ${level.width}`);
       }
-      if (/[^.XJ]/.test(row)) {
-        errors.push(`${tag}: layout row ${i} has an invalid character (only '.', 'X', 'J' allowed)`);
+      if (/[^.XJF]/.test(row)) {
+        errors.push(`${tag}: layout row ${i} has an invalid character (only '.', 'X', 'J', 'F' allowed)`);
       }
     }
   }
