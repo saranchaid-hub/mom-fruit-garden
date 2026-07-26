@@ -5,9 +5,9 @@ import { hasValidMove } from '../src/core/moves';
 import { createSession } from '../src/core/session';
 
 describe('level data', () => {
-  it('has 60 levels numbered sequentially from 1', () => {
-    expect(ALL_LEVELS).toHaveLength(60);
-    expect(ALL_LEVELS.map((l) => l.id)).toEqual(Array.from({ length: 60 }, (_, i) => i + 1));
+  it('has 80 levels numbered sequentially from 1', () => {
+    expect(ALL_LEVELS).toHaveLength(80);
+    expect(ALL_LEVELS.map((l) => l.id)).toEqual(Array.from({ length: 80 }, (_, i) => i + 1));
   });
 
   it.each(ALL_LEVELS)('level $id passes schema validation', (level) => {
