@@ -9,15 +9,36 @@ const FRUIT_NAMES: Record<FruitKind, string> = {
   banana: 'กล้วย',
 };
 
+const THAI_MONTHS = [
+  'มกราคม',
+  'กุมภาพันธ์',
+  'มีนาคม',
+  'เมษายน',
+  'พฤษภาคม',
+  'มิถุนายน',
+  'กรกฎาคม',
+  'สิงหาคม',
+  'กันยายน',
+  'ตุลาคม',
+  'พฤศจิกายน',
+  'ธันวาคม',
+];
+
+// Sunday-first, matching Date#getDay() (0 = Sunday) and the grid built by
+// calendarMonth.ts's firstWeekdayOfMonth.
+const THAI_WEEKDAYS_SHORT = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+
 export const STRINGS = {
   appTitle: 'สวนผลไม้ของแม่',
   play: 'เล่น',
   back: 'กลับ',
   retry: 'เล่นอีกครั้ง',
   backToMap: 'กลับแผนที่',
+  backToCalendar: 'กลับปฏิทิน',
   continueLabel: 'ไปต่อ',
   winTitle: 'เก่งมาก!',
   loseTitle: 'ไม่เป็นไรนะ ลองใหม่ได้เลย',
+  dailyBloomText: 'ดอกไม้ประจำวันบานแล้ว',
   movesLeft: 'ตาที่เหลือ',
   score: 'คะแนน',
   level: (id: number) => `ด่าน ${id}`,
@@ -33,6 +54,15 @@ export const STRINGS = {
   settingsSlowAnimation: 'เคลื่อนไหวช้าลง',
   settingsGearLabel: 'ตั้งค่า',
   tutorialGotIt: 'เข้าใจแล้ว',
+  dailyGardenButton: 'สวนประจำวัน',
+  dailyGardenHint: 'วันนี้ยังไม่ได้เก็บดอกไม้เลยนะ',
+  dailyGardenBloomedToday: 'วันนี้เก็บดอกไม้แล้ว',
+  calendarBackLabel: 'กลับแผนที่',
+  calendarPrevMonth: 'เดือนก่อนหน้า',
+  calendarNextMonth: 'เดือนถัดไป',
+  calendarWeekdaysShort: THAI_WEEKDAYS_SHORT,
+  calendarMonthYear: (month: number, year: number) => `${THAI_MONTHS[month - 1]} ${year + 543}`,
+  calendarDayLabel: (day: number, bloomed: boolean) => (bloomed ? `วันที่ ${day} ดอกไม้บานแล้ว` : `วันที่ ${day}`),
   tutorialByLevel: {
     1: 'แตะหรือลากผลไม้ 2 ลูกที่อยู่ติดกัน สลับให้เรียงกัน 3 ลูกขึ้นไปนะ',
     2: 'ทำเป้าหมายด้านบนให้ครบก่อนตาเดินหมดนะ',

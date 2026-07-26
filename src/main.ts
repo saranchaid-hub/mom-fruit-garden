@@ -3,6 +3,7 @@ import { startApp } from './game/app';
 startApp({
   titleEl: document.getElementById('screen-title') as HTMLElement,
   mapEl: document.getElementById('screen-map') as HTMLElement,
+  calendarEl: document.getElementById('screen-calendar') as HTMLElement,
   playEl: document.getElementById('screen-play') as HTMLElement,
   canvas: document.getElementById('board') as HTMLCanvasElement,
   hud: document.getElementById('hud') as HTMLElement,

@@ -21,6 +21,8 @@ export function renderMap(
   save: SaveData,
   onSelectLevel: (levelId: number) => void,
   onSettings: () => void,
+  onDailyGarden: () => void,
+  todayBloomed: boolean,
 ): void {
   container.innerHTML = '';
 
@@ -33,6 +35,22 @@ export function renderMap(
 
   const scroll = document.createElement('div');
   scroll.className = 'map-scroll';
+
+  const dailyCard = document.createElement('div');
+  dailyCard.className = 'daily-garden-card';
+
+  const dailyButton = document.createElement('button');
+  dailyButton.className = 'daily-garden-button';
+  dailyButton.textContent = `🌱 ${STRINGS.dailyGardenButton}`;
+  dailyButton.addEventListener('click', onDailyGarden);
+  dailyCard.appendChild(dailyButton);
+
+  const hint = document.createElement('p');
+  hint.className = 'daily-garden-hint';
+  hint.textContent = todayBloomed ? STRINGS.dailyGardenBloomedToday : STRINGS.dailyGardenHint;
+  dailyCard.appendChild(hint);
+
+  scroll.appendChild(dailyCard);
 
   const sections = sectionsOf(ALL_LEVELS, SECTION_SIZE);
   sections.forEach((levels, sectionIndex) => {
