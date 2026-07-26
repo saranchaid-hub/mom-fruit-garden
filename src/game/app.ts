@@ -7,6 +7,7 @@ import { todayDateKey } from './dailyDate';
 import {
   hasMercyBonus,
   loadSave,
+  markCalendarHintSeen,
   markTutorialSeen,
   MERCY_BONUS_MOVES,
   recordDailyBloom,
@@ -86,6 +87,16 @@ export function startApp(elements: AppElements): void {
     }
     renderCalendar(elements.calendarEl, save, todayDateKey(), goToDailyGarden, goToMap, openSettings);
     showOnly('calendar');
+
+    // One-time explanation of the Daily Garden mode, reusing the same
+    // overlay the level tutorials use (STRINGS.calendarHint). Persisted via
+    // its own save flag rather than tutorialSeen, since the calendar isn't a
+    // level id — see save.ts's calendarHintSeen field.
+    if (!save.calendarHintSeen) {
+      showTutorial(elements.dialogRoot, STRINGS.calendarHint, () => {
+        save = markCalendarHintSeen(save);
+      });
+    }
   }
 
   function goToPlay(levelId: number): void {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSave, recordDailyBloom, type SaveData } from '../src/game/save';
+import { markCalendarHintSeen, parseSave, recordDailyBloom, type SaveData } from '../src/game/save';
 
 // save.ts touches `localStorage`, which isn't available in this suite's
 // (default, non-DOM) Vitest environment. The migration/fallback logic itself
@@ -28,6 +28,7 @@ describe('parseSave — v1 -> v2 migration', () => {
     expect(result.failStreak).toEqual({ levelId: 46, count: 1 });
     expect(result.tutorialSeen).toEqual([1, 5, 9, 33, 45]);
     expect(result.dailyBlooms).toEqual([]);
+    expect(result.calendarHintSeen).toBe(false);
   });
 
   it('round-trips a v2 payload unchanged', () => {
@@ -39,10 +40,42 @@ describe('parseSave — v1 -> v2 migration', () => {
       failStreak: { levelId: 0, count: 0 },
       tutorialSeen: [1],
       dailyBlooms: ['2026-01-01', '2026-01-03'],
+      calendarHintSeen: true,
     };
 
     const result = parseSave(JSON.stringify(v2));
     expect(result).toEqual(v2);
+  });
+
+  // The important one (M9.5): a real v2 save written before calendarHintSeen
+  // existed has no such key in its JSON at all — this simulates exactly
+  // that, by omitting the field from an otherwise-realistic, star-bearing v2
+  // payload (mirroring Mom's real progress) rather than constructing a
+  // SaveData object (which the type system would force to include it).
+  it('loads a pre-M9.5 v2 save (no calendarHintSeen key) with all stars and progress intact', () => {
+    const oldV2WithoutCalendarHint = {
+      version: 2,
+      unlockedLevel: 72,
+      stars: { 1: 3, 2: 3, 30: 2, 65: 1, 71: 3 },
+      settings: { music: true, sfx: true, hints: false, animSpeed: 'slow' },
+      failStreak: { levelId: 69, count: 1 },
+      tutorialSeen: [1, 2, 3, 61, 65, 67, 71],
+      dailyBlooms: ['2026-07-20', '2026-07-24'],
+      // calendarHintSeen intentionally absent — the pre-M9.5 shape.
+    };
+
+    const result = parseSave(JSON.stringify(oldV2WithoutCalendarHint));
+
+    expect(result.version).toBe(2);
+    expect(result.unlockedLevel).toBe(72);
+    expect(result.stars).toEqual({ 1: 3, 2: 3, 30: 2, 65: 1, 71: 3 });
+    expect(result.settings).toEqual({ music: true, sfx: true, hints: false, animSpeed: 'slow' });
+    expect(result.failStreak).toEqual({ levelId: 69, count: 1 });
+    expect(result.tutorialSeen).toEqual([1, 2, 3, 61, 65, 67, 71]);
+    expect(result.dailyBlooms).toEqual(['2026-07-20', '2026-07-24']);
+    // Absent, not lost: defaults to false so she sees the hint once more —
+    // never a crash and never a wiped save.
+    expect(result.calendarHintSeen).toBe(false);
   });
 
   it('falls back to a fresh save for an absent key, malformed JSON, and a future version, without throwing', () => {
@@ -86,6 +119,7 @@ describe('recordDailyBloom', () => {
     failStreak: { levelId: 0, count: 0 },
     tutorialSeen: [1],
     dailyBlooms: [],
+    calendarHintSeen: false,
   };
 
   it('adds a date to dailyBlooms', () => {
@@ -104,5 +138,41 @@ describe('recordDailyBloom', () => {
     const next = recordDailyBloom(base, '2026-07-26');
     expect(next.stars).toEqual(base.stars);
     expect(next.unlockedLevel).toBe(base.unlockedLevel);
+  });
+});
+
+describe('markCalendarHintSeen', () => {
+  const base: SaveData = {
+    version: 2,
+    unlockedLevel: 20,
+    stars: { 1: 3, 5: 2 },
+    settings: { music: true, sfx: true, hints: true, animSpeed: 'normal' },
+    failStreak: { levelId: 0, count: 0 },
+    tutorialSeen: [1],
+    dailyBlooms: [],
+    calendarHintSeen: false,
+  };
+
+  it('defaults to false on a fresh save', () => {
+    expect(parseSave(null).calendarHintSeen).toBe(false);
+  });
+
+  it('sets calendarHintSeen to true', () => {
+    const next = markCalendarHintSeen(base);
+    expect(next.calendarHintSeen).toBe(true);
+  });
+
+  it('is idempotent once already seen', () => {
+    const once = markCalendarHintSeen(base);
+    const twice = markCalendarHintSeen(once);
+    expect(twice.calendarHintSeen).toBe(true);
+    expect(twice).toBe(once); // already-seen call returns the identical object, not a new copy
+  });
+
+  it('leaves stars, unlockedLevel, and dailyBlooms untouched', () => {
+    const next = markCalendarHintSeen(base);
+    expect(next.stars).toEqual(base.stars);
+    expect(next.unlockedLevel).toBe(base.unlockedLevel);
+    expect(next.dailyBlooms).toEqual(base.dailyBlooms);
   });
 });

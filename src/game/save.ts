@@ -22,6 +22,11 @@ export interface SaveData {
   // dateKeys ('YYYY-MM-DD') already bloomed in the Daily Garden (ADR-0005).
   // Not a level: recordDailyBloom never touches unlockedLevel or stars.
   dailyBlooms: string[];
+  // Whether the one-time Garden Calendar explanation (M9.5) has been
+  // dismissed. Additive optional-shaped field on the existing v2 schema — NOT
+  // a version bump (see parseSave: absent on an old v2 payload just falls
+  // back to `false` via the same deep-merge every other field already uses).
+  calendarHintSeen: boolean;
 }
 
 /** Shape of a save as it existed at version 1, before dailyBlooms existed. */
@@ -50,6 +55,7 @@ function defaultSave(): SaveData {
     failStreak: { levelId: 0, count: 0 },
     tutorialSeen: [],
     dailyBlooms: [],
+    calendarHintSeen: false,
   };
 }
 
@@ -78,6 +84,7 @@ function migrateV1ToV2(v1: SaveDataV1): SaveData {
     failStreak: { ...fallbackFailStreak, ...v1.failStreak },
     tutorialSeen: v1.tutorialSeen ?? [],
     dailyBlooms: [],
+    calendarHintSeen: false,
   };
 }
 
@@ -114,6 +121,13 @@ export function parseSave(raw: string | null): SaveData {
       failStreak: { ...fallback.failStreak, ...v2.failStreak },
       tutorialSeen: v2.tutorialSeen ?? fallback.tutorialSeen,
       dailyBlooms: v2.dailyBlooms ?? fallback.dailyBlooms,
+      // A real v2 save written before this field existed has no
+      // calendarHintSeen key at all (undefined, not false) — this is the
+      // exact "existing v2 save without the field still loads perfectly"
+      // case called out in BLUEPRINT-M9 M9.5. Falling back to false (not
+      // true) means she sees the hint once on her next calendar visit,
+      // which is the correct/harmless outcome, not a lost-progress one.
+      calendarHintSeen: v2.calendarHintSeen ?? fallback.calendarHintSeen,
     };
   } catch {
     // Private browsing / corrupted data — start fresh rather than crash.
@@ -169,6 +183,16 @@ export function markTutorialSeen(save: SaveData, levelId: number): SaveData {
     return save;
   }
   const next: SaveData = { ...save, tutorialSeen: [...save.tutorialSeen, levelId] };
+  writeSave(next);
+  return next;
+}
+
+/** Marks the one-time Garden Calendar explanation (M9.5) as seen, so it never shows again. */
+export function markCalendarHintSeen(save: SaveData): SaveData {
+  if (save.calendarHintSeen) {
+    return save;
+  }
+  const next: SaveData = { ...save, calendarHintSeen: true };
   writeSave(next);
   return next;
 }

@@ -67,7 +67,17 @@ export const STRINGS = {
     1: 'แตะหรือลากผลไม้ 2 ลูกที่อยู่ติดกัน สลับให้เรียงกัน 3 ลูกขึ้นไปนะ',
     2: 'ทำเป้าหมายด้านบนให้ครบก่อนตาเดินหมดนะ',
     3: 'ติดขัดเมื่อไหร่ กดปุ่มค้อนได้เลย ไม่เสียตาเดิน',
+    61: 'เห็นช่องที่มีดอกไม้ไหม จับผลไม้บนช่องนั้นแล้วดอกจะบาน ได้ตาเดินเพิ่มอีก 1 ตานะ',
+    // The second sentence is the load-bearing one: levels 69 and 70 are
+    // unwinnable without knowing the big fruit can be dragged sideways, and
+    // 65 itself can be beaten without ever discovering it. It is phrased
+    // against the rule she already knows ("เรียงให้ครบ 3") rather than in the
+    // abstract, so it lands as something she can act on.
+    65: 'ผลไม้ลูกใหญ่ต้องพาลงตะกร้าที่แถวล่างสุดนะ ลากมันไปทางซ้ายหรือขวาได้เลย ไม่ต้องเรียงให้ครบ 3 ก็ลากได้',
+    67: 'ด่านนี้ตะกร้ามีน้อยลง ถ้าลูกใหญ่ไม่ได้อยู่เหนือตะกร้าพอดี ก็ลากมันไปทางข้างๆ จนตรงตะกร้าได้เลยนะ',
+    71: 'จับผลไม้ชนิดเดียวกันทีเดียว 6 ลูกขึ้นไป จะได้เม็ดสายฝน กวาดหายทั้งแถวนอนและแถวตั้งเลย',
   } as Record<number, string>,
+  calendarHint: 'สวนนี้มีใหม่ให้ทุกวัน เล่นจบวันไหนก็ได้ดอกไม้ของวันนั้น ถ้าเว้นไปวันไหนไม่เป็นไรเลยนะ ย้อนกลับมาเล่นวันเก่าได้เสมอ',
   objectiveText(objective: Objective): string {
     switch (objective.type) {
       case 'collect':
