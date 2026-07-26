@@ -27,8 +27,13 @@ export function validateLevel(level: LevelDef): string[] {
       if (row.length !== level.width) {
         errors.push(`${tag}: layout row ${i} has length ${row.length}, expected ${level.width}`);
       }
-      if (/[^.XJF]/.test(row)) {
-        errors.push(`${tag}: layout row ${i} has an invalid character (only '.', 'X', 'J', 'F' allowed)`);
+      if (/[^.XJFB]/.test(row)) {
+        errors.push(`${tag}: layout row ${i} has an invalid character (only '.', 'X', 'J', 'F', 'B' allowed)`);
+      }
+      // A basket only makes sense on the bottom row: big fruit only falls
+      // straight down, so a basket anywhere else could never be reached.
+      if (row.includes('B') && i !== level.layout.length - 1) {
+        errors.push(`${tag}: layout row ${i} has a basket 'B' outside the bottom row`);
       }
     }
   }
@@ -52,6 +57,17 @@ export function validateLevel(level: LevelDef): string[] {
   }
   if (level.objective.type === 'collect' && !level.fruits.includes(level.objective.fruit)) {
     errors.push(`${tag}: collect objective targets a fruit not in this level's fruit list`);
+  }
+  if (level.objective.type === 'deliver') {
+    const hasBasket = level.layout?.some((row) => row.includes('B')) ?? false;
+    if (!hasBasket) {
+      errors.push(`${tag}: deliver objective but layout has no 'B' (basket) cells`);
+    }
+    if ((level.bigFruitTotal ?? 0) < level.objective.count) {
+      errors.push(
+        `${tag}: deliver objective needs ${level.objective.count} but bigFruitTotal is only ${level.bigFruitTotal ?? 0}`,
+      );
+    }
   }
 
   return errors;

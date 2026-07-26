@@ -5,7 +5,7 @@ import { createSession, trySwap, useHammer } from '../../core/session';
 import type { Pos, TurnEvent } from '../../core/types';
 import { playFanfare, playPop, playSpecialFire, playThud } from '../audio/sfx';
 import { attachBoardInput } from '../input';
-import { drawColorBomb, drawFruit, drawSpecialGlow, drawSpecialOverlay } from '../render/fruits';
+import { drawBigFruit, drawColorBomb, drawFruit, drawSpecialGlow, drawSpecialOverlay } from '../render/fruits';
 import { createRenderPieces, playPhases, type RenderPiece } from '../render/playback';
 import { cellCenter, computeLayout, drawBoardBackground, roundRect, setupHiDpiCanvas, type Layout } from '../render/renderer';
 import type { Settings, Stars } from '../save';
@@ -167,6 +167,12 @@ export function startPlayScreen(
       }
       if (piece.special === 'colorBomb') {
         drawColorBomb(ctx, x, y, size, piece.alpha, now / 900);
+      } else if (piece.big) {
+        // A big fruit has fruit: null and special: 'none', same as a
+        // colorBomb's null fruit — without this branch it would fall
+        // through to `piece.fruit` and draw as nothing, the exact class of
+        // invisible-piece bug fixed in M8 round 1.
+        drawBigFruit(ctx, x, y, size, piece.alpha);
       } else if (piece.fruit) {
         drawFruit(ctx, piece.fruit, x, y, size, piece.alpha);
         drawSpecialOverlay(ctx, piece.special, x, y, size);

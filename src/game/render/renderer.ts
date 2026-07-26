@@ -56,7 +56,7 @@ export function drawBoardBackground(ctx: CanvasRenderingContext2D, board: Board,
       const px = layout.originX + x * layout.tileSize;
       const py = layout.originY + y * layout.tileSize;
       const inset = 2;
-      ctx.fillStyle = cell.jelly ? '#bfe3c7' : '#ffe8bf';
+      ctx.fillStyle = cell.jelly ? '#bfe3c7' : cell.basket ? '#e3c99b' : '#ffe8bf';
       roundRect(ctx, px + inset, py + inset, layout.tileSize - inset * 2, layout.tileSize - inset * 2, 8);
       ctx.fill();
     }

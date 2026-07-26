@@ -267,6 +267,54 @@ export function drawSpecialOverlay(
   ctx.restore();
 }
 
+/**
+ * Placeholder art for a big fruit (ผลไม้ลูกใหญ่, ADR-0006): a plain fruit-ish
+ * circle with a simple basket glyph overlaid near the bottom, so the piece
+ * reads as "big fruit, headed for a basket" at a glance. No level ships
+ * with big fruit until M9.3, and real art is M9.2 — but a piece must never
+ * draw as nothing (the invisible-piece bug fixed in M8 round 1): this is
+ * deliberately plain, not final.
+ */
+export function drawBigFruit(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, alpha = 1): void {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  const r = size * 0.42;
+  ctx.fillStyle = '#e07a5f';
+  ctx.strokeStyle = '#b6573f';
+  ctx.lineWidth = Math.max(1, size * 0.04);
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  const bw = r * 1.1;
+  const bh = r * 0.55;
+  const by = cy + r * 0.35;
+  const basket = new Path2D();
+  basket.moveTo(cx - bw * 0.55, by - bh * 0.5);
+  basket.lineTo(cx + bw * 0.55, by - bh * 0.5);
+  basket.lineTo(cx + bw * 0.4, by + bh * 0.5);
+  basket.lineTo(cx - bw * 0.4, by + bh * 0.5);
+  basket.closePath();
+  ctx.fillStyle = '#8a5a2b';
+  ctx.strokeStyle = '#5c3a19';
+  ctx.lineWidth = Math.max(1, size * 0.025);
+  ctx.fill(basket);
+  ctx.stroke(basket);
+
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  for (const frac of [-0.2, 0.2]) {
+    ctx.beginPath();
+    ctx.moveTo(cx + bw * frac * 0.7, by - bh * 0.4);
+    ctx.lineTo(cx + bw * frac * 0.5, by + bh * 0.4);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
 export function drawColorBomb(
   ctx: CanvasRenderingContext2D,
   cx: number,

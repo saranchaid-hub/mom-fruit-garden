@@ -175,6 +175,85 @@ describe('special spawn caught in a same-turn blast', () => {
   });
 });
 
+describe('big fruit free swap (ADR-0006 containment)', () => {
+  it('two ordinary pieces that form no match still bounce back, cost 0, and leave the board unchanged, even with a big fruit elsewhere', () => {
+    const board = parseTestBoard(['M O G', 'O G M', 'G M BG']);
+    const before = cloneTestBoard(board);
+    const result = resolveSwap(board, { x: 0, y: 0 }, { x: 1, y: 0 }, createRng(1), idGen(), ['mango', 'orange', 'grape']);
+    expect(result.movesUsed).toBe(0);
+    expect(result.scoreDelta).toBe(0);
+    expect(result.phases).toEqual([[{ kind: 'swap', a: { x: 0, y: 0 }, b: { x: 1, y: 0 }, illegal: true }]]);
+    expect(board.cells.map((c) => c.piece?.fruit ?? (c.piece?.big ? 'BIG' : null))).toEqual(
+      before.cells.map((c) => c.piece?.fruit ?? (c.piece?.big ? 'BIG' : null)),
+    );
+  });
+
+  it('a big fruit swapped with an ordinary neighbour that forms no match still succeeds, costs 1 move, and the pieces really trade places', () => {
+    const board = parseTestBoard(['M O G', 'O G M', 'G M BG']);
+    const bgId = board.cells[8]?.piece?.id;
+    const mangoId = board.cells[7]?.piece?.id;
+    expect(board.cells[8]?.piece?.big).toBe(true);
+
+    const result = resolveSwap(board, { x: 2, y: 2 }, { x: 1, y: 2 }, createRng(1), idGen(), ['mango', 'orange', 'grape']);
+    expect(result.movesUsed).toBe(1);
+    expect(result.scoreDelta).toBe(0);
+    expect(result.phases[0]).toEqual([{ kind: 'swap', a: { x: 2, y: 2 }, b: { x: 1, y: 2 }, illegal: false }]);
+
+    // The pieces genuinely traded places (by identity, not just by value).
+    expect(board.cells[7]?.piece?.id).toBe(bgId);
+    expect(board.cells[7]?.piece?.big).toBe(true);
+    expect(board.cells[8]?.piece?.id).toBe(mangoId);
+    expect(board.cells[8]?.piece?.fruit).toBe('mango');
+  });
+
+  it('a big fruit swap that happens to complete a match is resolved like a normal successful swap (cascade + score)', () => {
+    // Row 0 is "M BG M" — swapping the big fruit at (1,0) with the mango
+    // directly below it at (1,1) moves that mango up into the gap, closing
+    // row 0 into "M M M". The swap succeeds either way (ADR-0006), but this
+    // confirms the incidental match still gets found and cleared/cascaded/
+    // scored through the exact same pipeline as an ordinary swap, rather
+    // than silently being left on the board.
+    const board = parseTestBoard(['M BG M', 'O M O', 'G O G']);
+    const result = resolveSwap(board, { x: 1, y: 0 }, { x: 1, y: 1 }, createRng(1), idGen(), ['mango', 'orange', 'grape']);
+    expect(result.movesUsed).toBe(1);
+    expect(result.scoreDelta).toBeGreaterThan(0);
+    const kinds = result.phases.flat().map((e) => e.kind);
+    expect(kinds).toContain('clear');
+  });
+
+  it('rejects a big fruit swap between non-adjacent cells (illegal, costs 0)', () => {
+    const board = parseTestBoard(['BG . M']);
+    const result = resolveSwap(board, { x: 0, y: 0 }, { x: 2, y: 0 }, createRng(1), idGen(), ['mango', 'orange', 'grape']);
+    expect(result.movesUsed).toBe(0);
+    expect(result.phases[0]?.[0]).toMatchObject({ illegal: true });
+  });
+
+  it('rejects a big fruit swap into a hole (illegal, costs 0)', () => {
+    const board = parseTestBoard(['BG X']);
+    const result = resolveSwap(board, { x: 0, y: 0 }, { x: 1, y: 0 }, createRng(1), idGen(), ['mango', 'orange', 'grape']);
+    expect(result.movesUsed).toBe(0);
+    expect(result.phases[0]?.[0]).toMatchObject({ illegal: true });
+  });
+});
+
+describe('big fruit immunity to clears', () => {
+  it('a striped blast crossing a big fruit clears everything else in its path but leaves the big fruit on the board', () => {
+    const board = parseTestBoard(['Mh O BG G W']);
+    const bgId = board.cells[2]?.piece?.id;
+    const result = resolveHammer(board, { x: 0, y: 0 }, createRng(3), idGen(), ['mango', 'orange', 'grape', 'watermelon']);
+
+    const clearEvent = result.phases[0]?.[0];
+    expect(clearEvent?.kind).toBe('clear');
+    const clearedCells = clearEvent && 'cells' in clearEvent ? clearEvent.cells : [];
+    expect(clearedCells).toEqual(expect.arrayContaining([{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 3, y: 0 }, { x: 4, y: 0 }]));
+    expect(clearedCells).not.toContainEqual({ x: 2, y: 0 });
+
+    // The big fruit itself survived, unmoved and un-replaced.
+    expect(board.cells[2]?.piece?.id).toBe(bgId);
+    expect(board.cells[2]?.piece?.big).toBe(true);
+  });
+});
+
 describe('fireRemainingSpecials', () => {
   it('keeps firing rounds until a cascade-spawned special is gone too', () => {
     // Bottom row (y=3) is the only special: a stripedH mango at (2,3). Firing
@@ -219,5 +298,64 @@ describe('fireRemainingSpecials', () => {
     expect(events.filter((e) => e.kind === 'specialSpawn').length).toBeGreaterThan(0);
     expect(events.filter((e) => e.kind === 'specialFire').length).toBeGreaterThanOrEqual(2);
     expect(result.scoreDelta).toBeGreaterThan(0);
+  });
+});
+
+describe('big fruit free swap leaves the board fully settled', () => {
+  it('cascades matches created by the delivery collapse instead of stranding them', () => {
+    // Row 3 holds two grapes at columns 1 and 2, and a lone grape sits one
+    // row higher at (0,2). Swapping the big fruit at (0,3) down onto the
+    // basket at (0,4) delivers it, which collapses column 0 by one row and
+    // drops that grape into (0,3) — completing a horizontal run of three
+    // that exists only *after* gravity. Before the fix this path settled but
+    // never cascaded, so the finished run just sat on the board unexploded
+    // until the player's next move.
+    const board = parseTestBoard([
+      'O M O M',
+      'M O M O',
+      'G O M O',
+      'BG G G M',
+      'MK O M O',
+    ]);
+    const fruits = ['mango', 'orange', 'grape', 'watermelon'] as const;
+    expect(hasMatches(board)).toBe(false);
+
+    const result = resolveSwap(board, { x: 0, y: 3 }, { x: 0, y: 4 }, createRng(11), idGen(), [...fruits]);
+    expect(result.movesUsed).toBe(1);
+    expect(result.phases.flat().some((e) => e.kind === 'deliver')).toBe(true);
+
+    // The whole point: the board is left match-free, exactly like every
+    // other resolve path guarantees.
+    expect(hasMatches(board)).toBe(false);
+    expect(result.scoreDelta).toBeGreaterThan(0);
+  });
+
+  it('still resolves cleanly when the free swap creates no match at all', () => {
+    const board = parseTestBoard(['M O G', 'O G M', 'BG M O']);
+    const result = resolveSwap(board, { x: 0, y: 2 }, { x: 1, y: 2 }, createRng(3), idGen(), [
+      'mango',
+      'orange',
+      'grape',
+    ]);
+    expect(result.movesUsed).toBe(1);
+    expect(hasMatches(board)).toBe(false);
+  });
+});
+
+describe('hammer versus big fruit', () => {
+  it('reports nothing happened rather than burning a charge on an immune piece', () => {
+    const board = parseTestBoard(['M O G', 'O G M', 'BG M O']);
+    const result = resolveHammer(board, { x: 0, y: 2 }, createRng(1), idGen(), ['mango', 'orange', 'grape']);
+    // Empty phases is the signal useHammer uses to keep the charge.
+    expect(result.phases).toEqual([]);
+    expect(result.scoreDelta).toBe(0);
+    // And the big fruit is still standing.
+    expect(board.cells[2 * board.width + 0]?.piece?.big).toBe(true);
+  });
+
+  it('still works normally on an ordinary piece next to a big fruit', () => {
+    const board = parseTestBoard(['M O G', 'O G M', 'BG M O']);
+    const result = resolveHammer(board, { x: 1, y: 2 }, createRng(1), idGen(), ['mango', 'orange', 'grape']);
+    expect(result.phases.length).toBeGreaterThan(0);
   });
 });

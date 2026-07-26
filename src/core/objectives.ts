@@ -9,12 +9,15 @@ export function createObjectiveProgress(objective: Objective, board: Board): Obj
       return { current: 0, target: objective.target };
     case 'jelly':
       return { current: 0, target: countJellyCells(board) };
+    case 'deliver':
+      return { current: 0, target: objective.count };
   }
 }
 
 export interface ClearTally {
   byFruit: Partial<Record<FruitKind, number>>;
   jellyClearedCount: number;
+  deliveredCount: number;
   totalScore: number;
 }
 
@@ -29,7 +32,12 @@ export function advanceObjective(
     // future score source (e.g. a special-candy bonus) bypasses this call.
     return { ...progress, current: Math.min(progress.target, cleared.totalScore) };
   }
-  const gained = objective.type === 'collect' ? (cleared.byFruit[objective.fruit] ?? 0) : cleared.jellyClearedCount;
+  const gained =
+    objective.type === 'collect'
+      ? (cleared.byFruit[objective.fruit] ?? 0)
+      : objective.type === 'deliver'
+        ? cleared.deliveredCount
+        : cleared.jellyClearedCount;
   return { ...progress, current: Math.min(progress.target, progress.current + gained) };
 }
 

@@ -62,16 +62,28 @@ function activateAndClear(board: Board, seedCells: Pos[], rng: Rng, fruits: Frui
     }
   }
 
-  const clearedCells = Array.from(toClear).map((key) => {
-    const [x, y] = key.split(',').map(Number);
-    return { x: x as number, y: y as number };
-  });
-
+  const clearedCells: Pos[] = [];
   const byFruit: Partial<Record<FruitKind, number>> = {};
   const jellyCells: Pos[] = [];
   const flowerCells: Pos[] = [];
-  for (const pos of clearedCells) {
+  for (const key of toClear) {
+    const [x, y] = key.split(',').map(Number);
+    const pos = { x: x as number, y: y as number };
     const cell = cellAt(board, pos);
+
+    // Big fruit is immune to every clear effect (ADR-0006): a striped/
+    // wrapped/rain/colorBomb blast that covers its cell must not remove it,
+    // score it, or clear jelly/flower underneath it — it leaves the board
+    // only via a basket. Its position was still legitimately enqueued (the
+    // BFS above doesn't need to know about it; a big fruit's special is
+    // always 'none' so the chain-propagation check already skips it on its
+    // own), so skipping it here only affects the *accounting* below, and
+    // everything else caught in the same blast still clears normally.
+    if (cell.piece?.big) {
+      continue;
+    }
+
+    clearedCells.push(pos);
     if (cell.piece) {
       if (cell.piece.fruit) {
         byFruit[cell.piece.fruit] = (byFruit[cell.piece.fruit] ?? 0) + 1;
@@ -129,14 +141,32 @@ function applySpawns(board: Board, spawns: PendingSpawn[], nextId: () => number)
   const events: TurnEvent[] = [];
   for (const spawn of spawns) {
     const cell = cellAt(board, spawn.at);
-    const piece: Piece = { id: nextId(), fruit: spawn.fruit, special: spawn.special };
+    const piece: Piece = { id: nextId(), fruit: spawn.fruit, special: spawn.special, big: false };
     cell.piece = piece;
     events.push({ kind: 'specialSpawn', at: spawn.at, piece });
   }
   return events;
 }
 
-export function applyGravity(board: Board): FallMove[] {
+type DeliverEvent = Extract<TurnEvent, { kind: 'deliver' }>;
+
+/**
+ * `deliveries` is an out-parameter (mutated, not returned) so this keeps its
+ * original `FallMove[]` return shape — every existing caller/test that
+ * doesn't care about basket delivery is unaffected.
+ *
+ * Big fruit falls exactly like any other piece via the same write-pointer
+ * pass. The basket check happens right where a piece's resting position is
+ * finalized (both when it actually fell and when it was already there):
+ * if that cell has `basket === true`, the piece is removed immediately and
+ * a delivery is recorded. Crucially, `writeY` is *not* decremented when
+ * that happens — the cell was just vacated again, so the next piece found
+ * scanning upward in this column falls into that same row instead of
+ * hanging one row higher, exactly as if the basket were a bottomless sink.
+ * This also means several big fruit stacked directly above a basket can all
+ * deliver in a single gravity pass.
+ */
+export function applyGravity(board: Board, deliveries: DeliverEvent[] = []): FallMove[] {
   const moves: FallMove[] = [];
   for (let x = 0; x < board.width; x++) {
     let writeY = board.height - 1;
@@ -147,32 +177,57 @@ export function applyGravity(board: Board): FallMove[] {
         continue;
       }
       if (cell.piece) {
-        if (y !== writeY) {
-          const target = cellAt(board, { x, y: writeY });
-          target.piece = cell.piece;
-          moves.push({ pieceId: cell.piece.id, from: { x, y }, to: { x, y: writeY } });
+        const piece = cell.piece;
+        const restY = writeY;
+        if (y !== restY) {
+          const target = cellAt(board, { x, y: restY });
+          target.piece = piece;
+          moves.push({ pieceId: piece.id, from: { x, y }, to: { x, y: restY } });
           cell.piece = null;
         }
-        writeY--;
+        const restCell = cellAt(board, { x, y: restY });
+        if (piece.big && restCell.basket) {
+          restCell.piece = null;
+          deliveries.push({ kind: 'deliver', at: { x, y: restY }, pieceId: piece.id });
+        } else {
+          writeY--;
+        }
       }
     }
   }
   return moves;
 }
 
-export function refillBoard(board: Board, fruits: FruitKind[], rng: Rng, nextId: () => number): Spawn[] {
+export function refillBoard(
+  board: Board,
+  fruits: FruitKind[],
+  rng: Rng,
+  nextId: () => number,
+  bigFruitRemaining = 0,
+): Spawn[] {
   if (fruits.length === 0) {
     throw new Error('Cannot refill a board with no fruit kinds configured');
   }
   const spawns: Spawn[] = [];
+  // At most one big fruit spawns per refillBoard call (i.e. per settle
+  // step), even if the level's quota and available top-row space would
+  // allow more — releasing them one at a time is deliberate so the board
+  // never floods with them (see BLUEPRINT-M9 M9.1).
+  let bigFruitSpawnedThisCall = false;
   for (let y = 0; y < board.height; y++) {
     for (let x = 0; x < board.width; x++) {
       const cell = cellAt(board, { x, y });
       if (cell.kind === 'hole' || cell.piece) {
         continue;
       }
-      const fruit = fruits[randomInt(rng, fruits.length)] as FruitKind;
-      const piece = { id: nextId(), fruit, special: 'none' as const };
+      let piece: Piece;
+      if (y === 0 && bigFruitRemaining > 0 && !bigFruitSpawnedThisCall) {
+        piece = { id: nextId(), fruit: null, special: 'none', big: true };
+        bigFruitSpawnedThisCall = true;
+      } else {
+        const fruit = fruits[randomInt(rng, fruits.length)] as FruitKind;
+        piece = { id: nextId(), fruit, special: 'none', big: false };
+      }
       cell.piece = piece;
       spawns.push({ piece, at: { x, y } });
     }
@@ -180,15 +235,29 @@ export function refillBoard(board: Board, fruits: FruitKind[], rng: Rng, nextId:
   return spawns;
 }
 
-function settleBoard(board: Board, rng: Rng, nextId: () => number, fruits: FruitKind[], phases: TurnEvent[][]): void {
-  const fallMoves = applyGravity(board);
+/** Returns the big-fruit quota remaining after this settle step's refill. */
+function settleBoard(
+  board: Board,
+  rng: Rng,
+  nextId: () => number,
+  fruits: FruitKind[],
+  phases: TurnEvent[][],
+  bigFruitRemaining: number,
+): number {
+  const deliveries: DeliverEvent[] = [];
+  const fallMoves = applyGravity(board, deliveries);
   if (fallMoves.length > 0) {
     phases.push([{ kind: 'fall', moves: fallMoves }]);
   }
-  const spawns = refillBoard(board, fruits, rng, nextId);
+  if (deliveries.length > 0) {
+    phases.push(deliveries);
+  }
+  const spawns = refillBoard(board, fruits, rng, nextId, bigFruitRemaining);
   if (spawns.length > 0) {
     phases.push([{ kind: 'refill', spawns }]);
   }
+  const bigSpawned = spawns.reduce((n, s) => n + (s.piece.big ? 1 : 0), 0);
+  return Math.max(0, bigFruitRemaining - bigSpawned);
 }
 
 function emitActivationPhase(
@@ -211,6 +280,11 @@ function emitActivationPhase(
   return points;
 }
 
+interface CascadeResult {
+  scoreDelta: number;
+  bigFruitRemaining: number;
+}
+
 function runCascade(
   board: Board,
   rng: Rng,
@@ -219,9 +293,11 @@ function runCascade(
   phases: TurnEvent[][],
   startChain: number,
   firstIterationPreferredCells: Pos[],
-): number {
+  bigFruitRemaining: number,
+): CascadeResult {
   let chain = startChain;
   let scoreDelta = 0;
+  let remaining = bigFruitRemaining;
   let preferredCells = firstIterationPreferredCells;
   for (;;) {
     const groups = findMatches(board);
@@ -235,10 +311,10 @@ function runCascade(
     const spawnEvents = applySpawns(board, spawns, nextId);
     scoreDelta += emitActivationPhase(activation, chain, phases, spawnEvents);
 
-    settleBoard(board, rng, nextId, fruits, phases);
+    remaining = settleBoard(board, rng, nextId, fruits, phases, remaining);
     chain++;
   }
-  return scoreDelta;
+  return { scoreDelta, bigFruitRemaining: remaining };
 }
 
 export function resolveSwap(
@@ -248,15 +324,62 @@ export function resolveSwap(
   rng: Rng,
   nextId: () => number,
   fruits: FruitKind[],
+  bigFruitRemaining = 0,
 ): ResolveResult {
   const phases: TurnEvent[][] = [];
   if (!canSwap(board, a, b)) {
     phases.push([{ kind: 'swap', a, b, illegal: true }]);
-    return { phases, scoreDelta: 0, movesUsed: 0 };
+    return { phases, scoreDelta: 0, movesUsed: 0, bigFruitRemaining };
   }
 
   const pieceA = cellAt(board, a).piece as Piece;
   const pieceB = cellAt(board, b).piece as Piece;
+
+  // ============================================================
+  // BIG FRUIT FREE-SWAP PATH (ADR-0006) — the one deliberate breach of the
+  // M1 rule "a swap that forms no match bounces back and costs nothing".
+  // A big fruit can always be swapped, in any direction, with no match
+  // required, so it can never get stranded in a basket-less column. This
+  // check runs BEFORE the special-swap combo check below on purpose: a big
+  // fruit's own `special` is always 'none', so it would never itself
+  // satisfy `isSpecialSwap` — but the pairing *would* if its neighbour is a
+  // colorBomb (isSpecialSwap treats "either side is colorBomb" as true
+  // regardless of the other side). That combo is deliberately routed
+  // through this free path instead: a big fruit has no fruit kind for a
+  // colorBomb to target, so there is no meaningful combo to fire anyway.
+  //
+  // This is the ONLY branch allowed to skip the match-forming check, and it
+  // must be reachable ONLY when at least one piece is big — two ordinary
+  // pieces must always fall through to the normal path below, where a
+  // non-match still bounces back and costs nothing. Do not add another
+  // early-return above this that two plain pieces could hit.
+  if (pieceA.big || pieceB.big) {
+    swapPieces(board, a, b);
+    phases.push([{ kind: 'swap', a, b, illegal: false }]);
+    // A big fruit itself never completes a match, but the ordinary piece it
+    // swapped places might (e.g. sliding into a run of its own fruit) — so
+    // this still checks for one and, if found, resolves it exactly like a
+    // normal successful swap (same cascade machinery, same scoring).
+    if (findMatches(board).length) {
+      const cascade = runCascade(board, rng, nextId, fruits, phases, 1, [a, b], bigFruitRemaining);
+      return { phases, scoreDelta: cascade.scoreDelta, movesUsed: 1, bigFruitRemaining: cascade.bigFruitRemaining };
+    }
+    // No match: still must settle unconditionally (not gated on a match),
+    // because the swap alone can place the big fruit directly onto a
+    // basket cell, and only a gravity pass (inside settleBoard) detects and
+    // processes that delivery. The cascade afterwards is not optional
+    // either: settling can itself line up a match — a delivered big fruit
+    // collapses its whole column, and the refill drops fresh pieces in —
+    // and every other path in this file ends by cascading until the board
+    // is match-free. Leaving it out here would strand an obvious unexploded
+    // run on screen until the player's next move.
+    const settled = settleBoard(board, rng, nextId, fruits, phases, bigFruitRemaining);
+    const cascade = runCascade(board, rng, nextId, fruits, phases, 1, [], settled);
+    return { phases, scoreDelta: cascade.scoreDelta, movesUsed: 1, bigFruitRemaining: cascade.bigFruitRemaining };
+  }
+  // ============================================================
+  // END BIG FRUIT FREE-SWAP PATH. Everything below requires a match.
+  // ============================================================
 
   if (isSpecialSwap(pieceA, pieceB)) {
     swapPieces(board, a, b);
@@ -272,21 +395,21 @@ export function resolveSwap(
     // effect rather than something worth extra machinery to suppress.
     const activation = activateAndClear(board, [a, b, ...seedCells], rng, fruits);
     const points = emitActivationPhase(activation, 1, phases, [comboEvent]);
-    settleBoard(board, rng, nextId, fruits, phases);
-    const cascadeScore = runCascade(board, rng, nextId, fruits, phases, 2, []);
-    return { phases, scoreDelta: points + cascadeScore, movesUsed: 1 };
+    const settled = settleBoard(board, rng, nextId, fruits, phases, bigFruitRemaining);
+    const cascade = runCascade(board, rng, nextId, fruits, phases, 2, [], settled);
+    return { phases, scoreDelta: points + cascade.scoreDelta, movesUsed: 1, bigFruitRemaining: cascade.bigFruitRemaining };
   }
 
   swapPieces(board, a, b);
   if (!findMatches(board).length) {
     swapPieces(board, a, b);
     phases.push([{ kind: 'swap', a, b, illegal: true }]);
-    return { phases, scoreDelta: 0, movesUsed: 0 };
+    return { phases, scoreDelta: 0, movesUsed: 0, bigFruitRemaining };
   }
 
   phases.push([{ kind: 'swap', a, b, illegal: false }]);
-  const scoreDelta = runCascade(board, rng, nextId, fruits, phases, 1, [a, b]);
-  return { phases, scoreDelta, movesUsed: 1 };
+  const cascade = runCascade(board, rng, nextId, fruits, phases, 1, [a, b], bigFruitRemaining);
+  return { phases, scoreDelta: cascade.scoreDelta, movesUsed: 1, bigFruitRemaining: cascade.bigFruitRemaining };
 }
 
 /**
@@ -328,17 +451,20 @@ export function fireRemainingSpecials(
 
     const activation = activateAndClear(board, seeds, rng, fruits);
     scoreDelta += emitActivationPhase(activation, 1, phases);
-    settleBoard(board, rng, nextId, fruits, phases);
-    scoreDelta += runCascade(board, rng, nextId, fruits, phases, 2, []);
+    // The victory blast never spawns new big fruit (hardcoded 0): the level
+    // is already won, so a fresh big fruit appearing mid-celebration would
+    // be pointless and possibly unreachable before the screen moves on.
+    const settled = settleBoard(board, rng, nextId, fruits, phases, 0);
+    scoreDelta += runCascade(board, rng, nextId, fruits, phases, 2, [], settled).scoreDelta;
   }
   // Reaching the cap without exhausting specials is left alone rather than
   // thrown: the level is already won, and leftover specials after this many
   // rounds are astronomically unlikely and harmless.
 
   if (firstRound) {
-    return { phases: [], scoreDelta: 0, movesUsed: 0 };
+    return { phases: [], scoreDelta: 0, movesUsed: 0, bigFruitRemaining: 0 };
   }
-  return { phases, scoreDelta, movesUsed: 0 };
+  return { phases, scoreDelta, movesUsed: 0, bigFruitRemaining: 0 };
 }
 
 export function resolveHammer(
@@ -347,10 +473,20 @@ export function resolveHammer(
   rng: Rng,
   nextId: () => number,
   fruits: FruitKind[],
+  bigFruitRemaining = 0,
 ): ResolveResult {
   const cell = cellAt(board, at);
   if (cell.kind === 'hole' || !cell.piece) {
-    return { phases: [], scoreDelta: 0, movesUsed: 0 };
+    return { phases: [], scoreDelta: 0, movesUsed: 0, bigFruitRemaining };
+  }
+  // A big fruit is immune to the hammer (it leaves only via a basket), so
+  // report "nothing happened" the same way an empty cell does. Returning no
+  // phases is what makes useHammer keep the charge: tapping the hammer on
+  // the big fruit is the first thing a player tries when they want to move
+  // it, and silently burning one of only three free charges for no effect
+  // is exactly the kind of small cruelty ADR-0003 exists to prevent.
+  if (cell.piece.big) {
+    return { phases: [], scoreDelta: 0, movesUsed: 0, bigFruitRemaining };
   }
 
   const phases: TurnEvent[][] = [];
@@ -372,7 +508,7 @@ export function resolveHammer(
   }
   phases.push(clearPhase);
 
-  settleBoard(board, rng, nextId, fruits, phases);
-  const cascadeScore = runCascade(board, rng, nextId, fruits, phases, 2, []);
-  return { phases, scoreDelta: points + cascadeScore, movesUsed: 0 };
+  const settled = settleBoard(board, rng, nextId, fruits, phases, bigFruitRemaining);
+  const cascade = runCascade(board, rng, nextId, fruits, phases, 2, [], settled);
+  return { phases, scoreDelta: points + cascade.scoreDelta, movesUsed: 0, bigFruitRemaining: cascade.bigFruitRemaining };
 }

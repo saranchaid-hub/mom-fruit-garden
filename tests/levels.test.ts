@@ -41,6 +41,55 @@ describe('level data', () => {
     expect(validateLevel(bogusLevel).join(' ')).toContain('invalid character');
   });
 
+  it('accepts B (basket) on the bottom row but rejects it elsewhere', () => {
+    const base = { ...(getLevel(1) as object) } as Parameters<typeof validateLevel>[0];
+
+    const bottomRowBasket = { ...base, width: 3, height: 2, layout: ['...', '..B'] };
+    expect(validateLevel(bottomRowBasket)).toEqual([]);
+
+    const midBoardBasket = { ...base, width: 3, height: 2, layout: ['.B.', '...'] };
+    expect(validateLevel(midBoardBasket).join(' ')).toContain('outside the bottom row');
+  });
+
+  it('rejects a deliver objective level with no basket cells', () => {
+    const base = { ...(getLevel(1) as object) } as Parameters<typeof validateLevel>[0];
+    const noBasketLevel = {
+      ...base,
+      width: 3,
+      height: 2,
+      layout: ['...', '...'],
+      objective: { type: 'deliver', count: 2 } as const,
+      bigFruitTotal: 5,
+    };
+    expect(validateLevel(noBasketLevel).join(' ')).toContain("no 'B'");
+  });
+
+  it("rejects a deliver objective level whose bigFruitTotal is below the objective's count", () => {
+    const base = { ...(getLevel(1) as object) } as Parameters<typeof validateLevel>[0];
+    const shortQuotaLevel = {
+      ...base,
+      width: 3,
+      height: 2,
+      layout: ['...', '..B'],
+      objective: { type: 'deliver', count: 3 } as const,
+      bigFruitTotal: 1,
+    };
+    expect(validateLevel(shortQuotaLevel).join(' ')).toContain('bigFruitTotal');
+  });
+
+  it('accepts a well-formed deliver level with a bottom-row basket and a sufficient bigFruitTotal', () => {
+    const base = { ...(getLevel(1) as object) } as Parameters<typeof validateLevel>[0];
+    const goodDeliverLevel = {
+      ...base,
+      width: 3,
+      height: 2,
+      layout: ['...', '..B'],
+      objective: { type: 'deliver', count: 1 } as const,
+      bigFruitTotal: 2,
+    };
+    expect(validateLevel(goodDeliverLevel)).toEqual([]);
+  });
+
   it('getLevel returns the matching level and throws for an unknown id', () => {
     expect(getLevel(1).id).toBe(1);
     expect(() => getLevel(999)).toThrow();

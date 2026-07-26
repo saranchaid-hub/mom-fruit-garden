@@ -46,6 +46,8 @@ export const STRINGS = {
         return 'เคลียร์วุ้นให้หมด';
       case 'score':
         return `ทำแต้ม ${objective.target}`;
+      case 'deliver':
+        return `ส่งผลไม้ลูกใหญ่ลงตะกร้า ${objective.count} ลูก`;
     }
   },
   fruitName(fruit: FruitKind): string {

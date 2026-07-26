@@ -4,6 +4,7 @@ export interface RenderPiece {
   pieceId: number;
   fruit: FruitKind | null;
   special: SpecialType;
+  big: boolean;
   x: number;
   y: number;
   scale: number;
@@ -20,6 +21,7 @@ export function createRenderPieces(board: Board): Map<number, RenderPiece> {
           pieceId: cell.piece.id,
           fruit: cell.piece.fruit,
           special: cell.piece.special,
+          big: cell.piece.big,
           x,
           y,
           scale: 1,
@@ -155,6 +157,7 @@ async function playRefill(
       pieceId: piece.id,
       fruit: piece.fruit,
       special: piece.special,
+      big: piece.big,
       x: at.x,
       y: at.y - 2,
       scale: 1,
@@ -210,12 +213,35 @@ function playSpecialSpawn(
     pieceId: event.piece.id,
     fruit: event.piece.fruit,
     special: event.piece.special,
+    big: event.piece.big,
     x: event.at.x,
     y: event.at.y,
     scale: 1,
     alpha: 1,
   });
   return Promise.resolve();
+}
+
+/**
+ * A big fruit collected by a basket: fades out in place, same feel as an
+ * ordinary clear, but keyed directly by pieceId (from the event) rather
+ * than by position, since the delivered piece is already gone from the
+ * board by the time this phase plays.
+ */
+async function playDeliver(
+  event: Extract<TurnEvent, { kind: 'deliver' }>,
+  renderPieces: Map<number, RenderPiece>,
+  speed: number,
+): Promise<void> {
+  const piece = renderPieces.get(event.pieceId);
+  if (!piece) {
+    return;
+  }
+  await animate(CLEAR_MS * speed, (t) => {
+    piece.scale = 1 - t;
+    piece.alpha = 1 - t;
+  });
+  renderPieces.delete(event.pieceId);
 }
 
 /** speed: 1 for normal, >1 slows everything down proportionally (the "slow" accessibility setting). */
@@ -240,6 +266,8 @@ export async function playPhases(
             return playReshuffle(event, renderPieces, speed);
           case 'specialSpawn':
             return playSpecialSpawn(event, renderPieces);
+          case 'deliver':
+            return playDeliver(event, renderPieces, speed);
           case 'jellyClear':
           case 'flowerBloom':
           case 'specialFire':

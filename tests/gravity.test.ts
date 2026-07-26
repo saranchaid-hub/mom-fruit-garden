@@ -46,6 +46,48 @@ describe('applyGravity', () => {
   });
 });
 
+describe('applyGravity: big fruit and basket delivery (ADR-0006)', () => {
+  it('a big fruit falls like any other piece when there is no basket in its column', () => {
+    const board = parseTestBoard(['BG', '.', '.']);
+    const deliveries: Parameters<typeof applyGravity>[1] = [];
+    const moves = applyGravity(board, deliveries);
+    expect(moves).toHaveLength(1);
+    expect(deliveries).toEqual([]);
+    expect(board.cells[2]?.piece?.big).toBe(true);
+    expect(board.cells[2]?.piece?.fruit).toBeNull();
+  });
+
+  it('a big fruit resting directly above a basket falls in and emits deliver; the piece is gone from the board', () => {
+    const board = parseTestBoard(['BG', '.', '.K']);
+    const bgId = board.cells[0]?.piece?.id;
+    const deliveries: Parameters<typeof applyGravity>[1] = [];
+    applyGravity(board, deliveries);
+    expect(deliveries).toEqual([{ kind: 'deliver', at: { x: 0, y: 2 }, pieceId: bgId }]);
+    expect(board.cells[2]?.piece).toBeNull();
+  });
+
+  it('pieces stacked above a delivered big fruit settle with no gap left behind', () => {
+    const board = parseTestBoard(['M', 'BG', '.', '.K']);
+    const deliveries: Parameters<typeof applyGravity>[1] = [];
+    applyGravity(board, deliveries);
+    expect(deliveries).toHaveLength(1);
+    // The basket consumed the big fruit, and the mango above it fell all
+    // the way through to the now-empty basket cell — no row left hanging.
+    expect(board.cells[0]?.piece).toBeNull();
+    expect(board.cells[1]?.piece).toBeNull();
+    expect(board.cells[2]?.piece).toBeNull();
+    expect(board.cells[3]?.piece?.fruit).toBe('mango');
+  });
+
+  it('several big fruit stacked directly above a basket can all deliver in a single gravity pass', () => {
+    const board = parseTestBoard(['BG', 'BG', '.K']);
+    const deliveries: Parameters<typeof applyGravity>[1] = [];
+    applyGravity(board, deliveries);
+    expect(deliveries).toHaveLength(2);
+    expect(board.cells[2]?.piece).toBeNull();
+  });
+});
+
 describe('refillBoard', () => {
   it('fills every empty normal cell and skips holes and filled cells', () => {
     const board = parseTestBoard(['. X M', '. . .', '. . .']);

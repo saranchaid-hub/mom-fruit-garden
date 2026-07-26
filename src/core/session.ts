@@ -16,6 +16,11 @@ export interface LevelSession {
   score: number;
   objectiveProgress: ObjectiveProgress;
   outcome: 'continue' | 'won' | 'lost';
+  // How many more big fruit refillBoard is still allowed to release this
+  // level (see ADR-0006 / BLUEPRINT-M9 M9.1). Starts from
+  // config.bigFruitTotal and is consumed turn by turn as resolveSwap/
+  // resolveHammer spawn them.
+  bigFruitRemaining: number;
 }
 
 const MAX_BOARD_GEN_ATTEMPTS = 3000;
@@ -47,15 +52,20 @@ export function createSession(config: LevelConfig, seed: number, hammerCount = D
     score: 0,
     objectiveProgress: createObjectiveProgress(config.objective, board),
     outcome: 'continue',
+    bigFruitRemaining: config.bigFruitTotal ?? 0,
   };
 }
 
-function tallyClear(
-  phases: TurnEvent[][],
-): { byFruit: Partial<Record<FruitKind, number>>; jellyClearedCount: number; flowerBloomCount: number } {
+function tallyClear(phases: TurnEvent[][]): {
+  byFruit: Partial<Record<FruitKind, number>>;
+  jellyClearedCount: number;
+  flowerBloomCount: number;
+  deliveredCount: number;
+} {
   const byFruit: Partial<Record<FruitKind, number>> = {};
   let jellyClearedCount = 0;
   let flowerBloomCount = 0;
+  let deliveredCount = 0;
   for (const phase of phases) {
     for (const event of phase) {
       if (event.kind === 'clear') {
@@ -66,18 +76,22 @@ function tallyClear(
         jellyClearedCount += event.cells.length;
       } else if (event.kind === 'flowerBloom') {
         flowerBloomCount += event.cells.length;
+      } else if (event.kind === 'deliver') {
+        deliveredCount += 1;
       }
     }
   }
-  return { byFruit, jellyClearedCount, flowerBloomCount };
+  return { byFruit, jellyClearedCount, flowerBloomCount, deliveredCount };
 }
 
 function finalize(session: LevelSession, result: ResolveResult, nextId: () => number): TurnResult {
   session.score += result.scoreDelta;
-  const { byFruit, jellyClearedCount, flowerBloomCount } = tallyClear(result.phases);
+  session.bigFruitRemaining = result.bigFruitRemaining;
+  const { byFruit, jellyClearedCount, flowerBloomCount, deliveredCount } = tallyClear(result.phases);
   session.objectiveProgress = advanceObjective(session.objectiveProgress, session.config.objective, {
     byFruit,
     jellyClearedCount,
+    deliveredCount,
     totalScore: session.score,
   });
   session.movesLeft = Math.max(0, session.movesLeft - result.movesUsed);
@@ -146,7 +160,7 @@ export function trySwap(session: LevelSession, a: Pos, b: Pos): TurnResult {
     return staleResult(session);
   }
   const nextId = () => ++session.nextIdCounter;
-  const result = resolveSwap(session.board, a, b, session.rng, nextId, session.config.fruits);
+  const result = resolveSwap(session.board, a, b, session.rng, nextId, session.config.fruits, session.bigFruitRemaining);
   return finalize(session, result, nextId);
 }
 
@@ -155,7 +169,7 @@ export function useHammer(session: LevelSession, at: Pos): TurnResult {
     return staleResult(session);
   }
   const nextId = () => ++session.nextIdCounter;
-  const result = resolveHammer(session.board, at, session.rng, nextId, session.config.fruits);
+  const result = resolveHammer(session.board, at, session.rng, nextId, session.config.fruits, session.bigFruitRemaining);
   if (result.phases.length === 0) {
     return staleResult(session);
   }

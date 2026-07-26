@@ -187,8 +187,8 @@ describe('cellsOfFruit / pickRandomFruitOnBoard', () => {
 describe('comboBlast', () => {
   it('striped + striped clears both crosses through the swapped positions', () => {
     const board = parseTestBoard(['. . . . .', '. . . . .', '. . . . .', '. . . . .', '. . . . .']);
-    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'stripedH' };
-    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'stripedV' };
+    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'stripedH', big: false };
+    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'stripedV', big: false };
     const a: Pos = { x: 1, y: 1 };
     const b: Pos = { x: 2, y: 1 };
     const { seedCells, comboEvent } = comboBlast(board, a, b, pieceA, pieceB);
@@ -200,8 +200,8 @@ describe('comboBlast', () => {
 
   it('striped + wrapped clears a giant cross of 3 rows and 3 columns', () => {
     const board = parseTestBoard(['. . . . .', '. . . . .', '. . . . .', '. . . . .', '. . . . .']);
-    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'stripedH' };
-    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'wrapped' };
+    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'stripedH', big: false };
+    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'wrapped', big: false };
     const { seedCells } = comboBlast(board, { x: 1, y: 1 }, { x: 2, y: 1 }, pieceA, pieceB);
     // center is the wrapped piece's position (2,1): rows y=0,1,2 (full width)
     // plus columns x=1,2,3 (full height), overlap counted once.
@@ -212,8 +212,8 @@ describe('comboBlast', () => {
 
   it('wrapped + wrapped clears two overlapping 5x5 blocks', () => {
     const board = parseTestBoard(Array.from({ length: 7 }, () => '. . . . . . .'));
-    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'wrapped' };
-    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'wrapped' };
+    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'wrapped', big: false };
+    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'wrapped', big: false };
     const { seedCells } = comboBlast(board, { x: 3, y: 3 }, { x: 4, y: 3 }, pieceA, pieceB);
     expect(seedCells).toHaveLength(30);
   });
@@ -270,8 +270,8 @@ describe('comboBlast', () => {
 
   it('rain + rain unions the full row and column through each swapped position (same shape as striped + striped)', () => {
     const board = parseTestBoard(['. . . . .', '. . . . .', '. . . . .', '. . . . .', '. . . . .']);
-    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'rain' };
-    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'rain' };
+    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'rain', big: false };
+    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'rain', big: false };
     const a: Pos = { x: 1, y: 1 };
     const b: Pos = { x: 2, y: 1 };
     const { seedCells } = comboBlast(board, a, b, pieceA, pieceB);
@@ -281,16 +281,16 @@ describe('comboBlast', () => {
 
   it('rain + striped falls into the same row/column-union fallback as rain + rain', () => {
     const board = parseTestBoard(['. . . . .', '. . . . .', '. . . . .', '. . . . .', '. . . . .']);
-    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'rain' };
-    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'stripedV' };
+    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'rain', big: false };
+    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'stripedV', big: false };
     const { seedCells } = comboBlast(board, { x: 1, y: 1 }, { x: 2, y: 1 }, pieceA, pieceB);
     expect(seedCells).toHaveLength(13);
   });
 
   it('wrapped + rain clears 3 rows x 3 cols centered on the wrapped piece, which always contains rain\'s own row and column', () => {
     const board = parseTestBoard(['. . . . .', '. . . . .', '. . . . .', '. . . . .', '. . . . .']);
-    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'wrapped' };
-    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'rain' };
+    const pieceA: Piece = { id: 1, fruit: 'mango', special: 'wrapped', big: false };
+    const pieceB: Piece = { id: 2, fruit: 'mango', special: 'rain', big: false };
     const a: Pos = { x: 1, y: 1 };
     const b: Pos = { x: 2, y: 1 };
     const { seedCells } = comboBlast(board, a, b, pieceA, pieceB);

@@ -10,6 +10,15 @@ function wouldMatch(board: Board, a: Pos, b: Pos): boolean {
   return matched;
 }
 
+// Deliberately does NOT special-case big fruit: a big-fruit swap is always
+// legal via resolveSwap (ADR-0006's free swap), but `wouldMatch` only
+// counts a swap here when it actually forms a match, so a big-fruit nudge
+// that forms no match is never reported as a "valid move". This is
+// intentional, not an oversight — findValidMoves feeds both the hint system
+// (which must point at a real match, not a big fruit that scores nothing)
+// and the stuck-board/reshuffle check (a board whose only "legal" move is
+// nudging a big fruit sideways is functionally stuck and must still
+// reshuffle).
 export function findValidMoves(board: Board): [Pos, Pos][] {
   const valid: [Pos, Pos][] = [];
   for (let y = 0; y < board.height; y++) {
@@ -97,6 +106,7 @@ export function reshuffleBoard(board: Board, rng: Rng, fruits: FruitKind[], next
       id: nextId(),
       fruit: fruits[randomInt(rng, fruits.length)] as FruitKind,
       special: 'none' as const,
+      big: false,
     }));
     const result = applyAndCheck(board, positions, fresh);
     if (result) return result;

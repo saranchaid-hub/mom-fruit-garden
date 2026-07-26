@@ -165,6 +165,53 @@ describe('victory blast', () => {
   });
 });
 
+describe('deliver objective (ADR-0006 big fruit)', () => {
+  const deliverBoard = () =>
+    parseTestBoard(['M O G', 'O G M', 'BG MK G']);
+
+  it('increments progress per delivery without completing the level early', () => {
+    const config: LevelConfig = {
+      width: 3,
+      height: 3,
+      fruits: ['mango', 'orange', 'grape'],
+      moves: 5,
+      objective: { type: 'deliver', count: 2 },
+      starScores: [50, 100],
+    };
+    const session = createSession(config, 1);
+    session.board = deliverBoard();
+    session.objectiveProgress = createObjectiveProgress(config.objective, session.board);
+
+    // The big fruit at (0,2) swaps with the mango sitting on the basket
+    // cell at (1,2); no match forms, so it resolves via the free-swap path
+    // and settles straight into the basket.
+    const result = trySwap(session, { x: 0, y: 2 }, { x: 1, y: 2 });
+    expect(result.movesUsed).toBe(1);
+    expect(result.phases.flat().some((e) => e.kind === 'deliver')).toBe(true);
+    expect(session.objectiveProgress).toEqual({ current: 1, target: 2 });
+    expect(session.outcome).toBe('continue');
+  });
+
+  it('wins the level once the deliver count is reached', () => {
+    const config: LevelConfig = {
+      width: 3,
+      height: 3,
+      fruits: ['mango', 'orange', 'grape'],
+      moves: 5,
+      objective: { type: 'deliver', count: 1 },
+      starScores: [50, 100],
+    };
+    const session = createSession(config, 1);
+    session.board = deliverBoard();
+    session.objectiveProgress = createObjectiveProgress(config.objective, session.board);
+
+    const result = trySwap(session, { x: 0, y: 2 }, { x: 1, y: 2 });
+    expect(result.phases.flat().some((e) => e.kind === 'deliver')).toBe(true);
+    expect(session.objectiveProgress).toEqual({ current: 1, target: 1 });
+    expect(session.outcome).toBe('won');
+  });
+});
+
 describe('flower bonus moves', () => {
   const smallConfig: LevelConfig = {
     width: 3,

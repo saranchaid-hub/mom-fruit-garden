@@ -7,7 +7,7 @@ export function createBoardFromLayout(width: number, height: number, layout?: st
     for (let x = 0; x < width; x++) {
       const symbol = row[x] ?? '.';
       const kind: CellKind = symbol === 'X' ? 'hole' : 'normal';
-      cells.push({ kind, jelly: symbol === 'J', flower: symbol === 'F', piece: null });
+      cells.push({ kind, jelly: symbol === 'J', flower: symbol === 'F', basket: symbol === 'B', piece: null });
     }
   }
   return { width, height, cells };
