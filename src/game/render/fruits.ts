@@ -268,48 +268,82 @@ export function drawSpecialOverlay(
 }
 
 /**
- * Placeholder art for a big fruit (ผลไม้ลูกใหญ่, ADR-0006): a plain fruit-ish
- * circle with a simple basket glyph overlaid near the bottom, so the piece
- * reads as "big fruit, headed for a basket" at a glance. No level ships
- * with big fruit until M9.3, and real art is M9.2 — but a piece must never
- * draw as nothing (the invisible-piece bug fixed in M8 round 1): this is
- * deliberately plain, not final.
+ * ผลไม้ลูกใหญ่ (Big Fruit, ADR-0006), drawn as a สับปะรด (pineapple) —
+ * deliberately NOT one of the six matchable fruit kinds, so the shape alone
+ * tells the player "this one is not for matching" at a glance. Two shape
+ * cues carry that message even in grayscale (ADR-0004): a tall barrel body
+ * (taller/narrower than any matchable fruit's silhouette) topped by a
+ * prominent spiky leaf crown — the crown is deliberately large, easily the
+ * single most distinctive feature — plus a diamond cross-hatch texture on
+ * the body that no matchable fruit has. It is also drawn noticeably larger
+ * than a normal fruit (a normal fruit's silhouette tops out around
+ * `size * 0.36` in any one dimension; this piece spans roughly `size * 0.9`
+ * top-to-bottom) while still keeping clear of the cell edges. It never gets
+ * the special-piece glow (drawn only when `piece.special !== 'none'`, and a
+ * big fruit's special is always 'none') because it is not a special piece.
  */
 export function drawBigFruit(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, alpha = 1): void {
   ctx.save();
   ctx.globalAlpha = alpha;
 
-  const r = size * 0.42;
-  ctx.fillStyle = '#e07a5f';
-  ctx.strokeStyle = '#b6573f';
-  ctx.lineWidth = Math.max(1, size * 0.04);
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
+  const rx = size * 0.29;
+  const ry = size * 0.33;
+  const bodyCy = cy + size * 0.1;
+  const bodyTopY = bodyCy - ry;
 
-  const bw = r * 1.1;
-  const bh = r * 0.55;
-  const by = cy + r * 0.35;
-  const basket = new Path2D();
-  basket.moveTo(cx - bw * 0.55, by - bh * 0.5);
-  basket.lineTo(cx + bw * 0.55, by - bh * 0.5);
-  basket.lineTo(cx + bw * 0.4, by + bh * 0.5);
-  basket.lineTo(cx - bw * 0.4, by + bh * 0.5);
-  basket.closePath();
-  ctx.fillStyle = '#8a5a2b';
-  ctx.strokeStyle = '#5c3a19';
-  ctx.lineWidth = Math.max(1, size * 0.025);
-  ctx.fill(basket);
-  ctx.stroke(basket);
+  const bodyPath = new Path2D();
+  bodyPath.ellipse(cx, bodyCy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#e2a238';
+  ctx.strokeStyle = '#a06c1c';
+  ctx.lineWidth = Math.max(1, size * 0.035);
+  ctx.fill(bodyPath);
+  ctx.stroke(bodyPath);
 
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-  ctx.lineWidth = Math.max(1, size * 0.015);
-  for (const frac of [-0.2, 0.2]) {
+  // Diamond cross-hatch skin texture, clipped to the body so it never
+  // bleeds outside the silhouette.
+  ctx.save();
+  ctx.clip(bodyPath);
+  ctx.strokeStyle = 'rgba(122, 76, 15, 0.55)';
+  ctx.lineWidth = Math.max(1, size * 0.018);
+  const span = rx * 2.4;
+  const step = size * 0.13;
+  for (let d = -4; d <= 4; d++) {
+    const x0 = cx + d * step;
     ctx.beginPath();
-    ctx.moveTo(cx + bw * frac * 0.7, by - bh * 0.4);
-    ctx.lineTo(cx + bw * frac * 0.5, by + bh * 0.4);
+    ctx.moveTo(x0 - span * 0.5, bodyCy - ry * 1.3);
+    ctx.lineTo(x0 + span * 0.5, bodyCy + ry * 1.3);
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x0 + span * 0.5, bodyCy - ry * 1.3);
+    ctx.lineTo(x0 - span * 0.5, bodyCy + ry * 1.3);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // Spiky crown of leaves on top — the primary shape cue, drawn large and
+  // fanned out so it reads clearly even as a grayscale silhouette.
+  const leafCount = 5;
+  const crownBaseY = bodyTopY + size * 0.04;
+  ctx.fillStyle = '#4a7c2f';
+  ctx.strokeStyle = '#2f5a1c';
+  ctx.lineWidth = Math.max(1, size * 0.02);
+  for (let i = 0; i < leafCount; i++) {
+    const frac = i / (leafCount - 1) - 0.5; // -0.5..0.5
+    const angle = frac * 1.35; // radians, fanned spread
+    const length = size * (0.34 - Math.abs(frac) * 0.1);
+    const baseX = cx + Math.sin(angle) * rx * 0.3;
+    const baseHalf = size * 0.05;
+    const perpX = Math.cos(angle) * baseHalf;
+    const perpY = Math.sin(angle) * baseHalf;
+    const tipX = cx + Math.sin(angle) * length;
+    const tipY = crownBaseY - Math.cos(angle) * length;
+    const leaf = new Path2D();
+    leaf.moveTo(baseX - perpX, crownBaseY - perpY);
+    leaf.lineTo(tipX, tipY);
+    leaf.lineTo(baseX + perpX, crownBaseY + perpY);
+    leaf.closePath();
+    ctx.fill(leaf);
+    ctx.stroke(leaf);
   }
 
   ctx.restore();
@@ -350,4 +384,89 @@ export function drawColorBomb(
     ctx.fill();
   }
   ctx.restore();
+}
+
+/**
+ * ดอกไม้บาน (flowerBloom turn event): the bud at this cell opens into a small
+ * flower and fades, and a "+1" floats upward and fades alongside it, telling
+ * the player they were just handed an extra move. `progress` runs 0..1 over
+ * the effect's whole lifetime (driven by playback.ts's `animate`, same style
+ * as `RenderPiece.scale`/`alpha`). Petals open over the first ~55% of the
+ * animation and the whole thing fades over the second half, so bloom and
+ * fade never fight for the same instant.
+ */
+export function drawFlowerBloomEffect(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, progress: number): void {
+  ctx.save();
+  const openT = Math.min(1, progress / 0.55);
+  const fadeT = progress < 0.5 ? 0 : (progress - 0.5) / 0.5;
+  const bloomAlpha = 1 - fadeT;
+
+  ctx.globalAlpha = bloomAlpha * 0.9;
+  const petalR = size * (0.05 + 0.06 * openT);
+  const dist = size * 0.11 * openT;
+  ctx.fillStyle = '#ff9db3';
+  ctx.strokeStyle = '#d9738d';
+  ctx.lineWidth = Math.max(1, size * 0.015);
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2 - Math.PI / 2;
+    const px = cx + Math.cos(angle) * dist;
+    const py = cy + Math.sin(angle) * dist;
+    ctx.beginPath();
+    ctx.ellipse(px, py, petalR, petalR * 0.75, angle, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath();
+  ctx.arc(cx, cy, size * 0.045, 0, Math.PI * 2);
+  ctx.fill();
+
+  // The "+1" is the actual gameplay message (a free move was just granted);
+  // it floats up and fades across the FULL duration, independent of the
+  // bloom's own open/fade timing above.
+  const floatY = cy - size * 0.15 - size * 0.5 * progress;
+  ctx.globalAlpha = 1 - progress;
+  ctx.fillStyle = '#5c3a19';
+  ctx.font = `bold ${Math.max(18, Math.round(size * 0.34))}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('+1', cx, floatY);
+
+  ctx.restore();
+}
+
+/**
+ * ลงตะกร้า (deliver turn event): a small radiating burst of sparkles at the
+ * basket cell, timed alongside the big fruit's squash-and-shrink in
+ * playback.ts's `playDeliver` so the payoff moment gets both a shape change
+ * on the piece and a distinct flourish around it.
+ */
+export function drawDeliverSparkle(ctx: CanvasRenderingContext2D, cx: number, cy: number, size: number, progress: number): void {
+  ctx.save();
+  ctx.globalAlpha = 1 - progress;
+  ctx.fillStyle = '#fff3b0';
+  const count = 6;
+  const dist = size * (0.1 + 0.3 * progress);
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + progress * 1.2;
+    const sx = cx + Math.cos(angle) * dist;
+    const sy = cy + Math.sin(angle) * dist;
+    const r = Math.max(1, size * 0.045 * (1 - progress * 0.5));
+    drawSparklePoint(ctx, sx, sy, r);
+  }
+  ctx.restore();
+}
+
+function drawSparklePoint(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  ctx.beginPath();
+  ctx.moveTo(x, y - r);
+  ctx.lineTo(x + r * 0.3, y - r * 0.3);
+  ctx.lineTo(x + r, y);
+  ctx.lineTo(x + r * 0.3, y + r * 0.3);
+  ctx.lineTo(x, y + r);
+  ctx.lineTo(x - r * 0.3, y + r * 0.3);
+  ctx.lineTo(x - r, y);
+  ctx.lineTo(x - r * 0.3, y - r * 0.3);
+  ctx.closePath();
+  ctx.fill();
 }

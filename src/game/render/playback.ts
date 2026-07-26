@@ -11,6 +11,30 @@ export interface RenderPiece {
   alpha: number;
 }
 
+/**
+ * A transient, cell-anchored visual effect that has no backing piece of its
+ * own — the flower-bloom flourish and the delivery sparkle. Modeled after
+ * `RenderPiece`: a plain data object whose fields are advanced by `animate`
+ * in this module, then read every frame by the draw loop in play.ts (see
+ * `drawFlowerBloomEffect`/`drawDeliverSparkle` in render/fruits.ts). Kept in
+ * its own map, separate from `renderPieces`, since it has no `pieceId` to
+ * key on and can outlive or have no relation to any particular piece.
+ */
+export interface RenderEffect {
+  effectId: number;
+  kind: 'flowerBloom' | 'deliverSparkle';
+  x: number;
+  y: number;
+  /** 0 (just started) .. 1 (finished), advanced by `animate`. */
+  progress: number;
+}
+
+let nextEffectId = 1;
+
+export function createRenderEffects(): Map<number, RenderEffect> {
+  return new Map();
+}
+
 export function createRenderPieces(board: Board): Map<number, RenderPiece> {
   const pieces = new Map<number, RenderPiece>();
   for (let y = 0; y < board.height; y++) {
@@ -47,6 +71,8 @@ const CLEAR_MS = 140;
 const FALL_MS_PER_CELL = 70;
 const MIN_FALL_MS = 120;
 const RESHUFFLE_MS = 220;
+const DELIVER_MS = 300;
+const BLOOM_MS = 420;
 
 function animate(durationMs: number, onUpdate: (t: number) => void): Promise<void> {
   if (durationMs <= 0) {
@@ -223,31 +249,88 @@ function playSpecialSpawn(
 }
 
 /**
- * A big fruit collected by a basket: fades out in place, same feel as an
- * ordinary clear, but keyed directly by pieceId (from the event) rather
- * than by position, since the delivered piece is already gone from the
- * board by the time this phase plays.
+ * A big fruit collected by a basket: a little squash-and-settle bump
+ * (scale briefly overshoots past 1 before shrinking away), then shrinks and
+ * fades into the basket while a burst of sparkles radiates from the same
+ * spot (drawn by drawDeliverSparkle, keyed off the RenderEffect this
+ * function creates). Keyed directly by pieceId (from the event) rather than
+ * by position, since the delivered piece is already gone from the board by
+ * the time this phase plays — the prior 'fall' phase already animated it
+ * down to the basket cell, so this just plays the flourish in place.
  */
 async function playDeliver(
   event: Extract<TurnEvent, { kind: 'deliver' }>,
   renderPieces: Map<number, RenderPiece>,
+  effects: Map<number, RenderEffect>,
   speed: number,
 ): Promise<void> {
   const piece = renderPieces.get(event.pieceId);
   if (!piece) {
     return;
   }
-  await animate(CLEAR_MS * speed, (t) => {
-    piece.scale = 1 - t;
-    piece.alpha = 1 - t;
+  const sparkle: RenderEffect = {
+    effectId: nextEffectId++,
+    kind: 'deliverSparkle',
+    x: event.at.x,
+    y: event.at.y,
+    progress: 0,
+  };
+  effects.set(sparkle.effectId, sparkle);
+  const settleFrac = 0.35;
+  await animate(DELIVER_MS * speed, (t) => {
+    sparkle.progress = t;
+    if (t < settleFrac) {
+      piece.scale = 1 + 0.16 * Math.sin((t / settleFrac) * Math.PI);
+    } else {
+      const shrinkT = (t - settleFrac) / (1 - settleFrac);
+      piece.scale = lerp(1, 0, shrinkT);
+      piece.alpha = lerp(1, 0, shrinkT);
+    }
   });
+  effects.delete(sparkle.effectId);
   renderPieces.delete(event.pieceId);
 }
 
-/** speed: 1 for normal, >1 slows everything down proportionally (the "slow" accessibility setting). */
+/**
+ * ดอกไม้บาน (flowerBloom): the bud at each cleared flower cell opens into a
+ * flower and fades while a "+1" floats up beside it, telling the player
+ * they were just handed an extra move (see drawFlowerBloomEffect). One
+ * RenderEffect per cell, all driven by the same shared timeline.
+ */
+async function playFlowerBloom(
+  event: Extract<TurnEvent, { kind: 'flowerBloom' }>,
+  effects: Map<number, RenderEffect>,
+  speed: number,
+): Promise<void> {
+  if (event.cells.length === 0) {
+    return;
+  }
+  const created = event.cells.map((pos): RenderEffect => {
+    const effect: RenderEffect = { effectId: nextEffectId++, kind: 'flowerBloom', x: pos.x, y: pos.y, progress: 0 };
+    effects.set(effect.effectId, effect);
+    return effect;
+  });
+  await animate(BLOOM_MS * speed, (t) => {
+    for (const effect of created) {
+      effect.progress = t;
+    }
+  });
+  for (const effect of created) {
+    effects.delete(effect.effectId);
+  }
+}
+
+/**
+ * speed: 1 for normal, >1 slows everything down proportionally (the "slow"
+ * accessibility setting). `effects` collects transient cell-anchored visuals
+ * that have no backing piece (flower bloom, delivery sparkle) — pass the
+ * same map returned by `createRenderEffects()` across a whole play session,
+ * same as `renderPieces`.
+ */
 export async function playPhases(
   phases: TurnEvent[][],
   renderPieces: Map<number, RenderPiece>,
+  effects: Map<number, RenderEffect>,
   speed = 1,
 ): Promise<void> {
   for (const phase of phases) {
@@ -267,9 +350,10 @@ export async function playPhases(
           case 'specialSpawn':
             return playSpecialSpawn(event, renderPieces);
           case 'deliver':
-            return playDeliver(event, renderPieces, speed);
-          case 'jellyClear':
+            return playDeliver(event, renderPieces, effects, speed);
           case 'flowerBloom':
+            return playFlowerBloom(event, effects, speed);
+          case 'jellyClear':
           case 'specialFire':
           case 'comboFire':
           case 'score':

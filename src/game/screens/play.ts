@@ -3,10 +3,18 @@ import { findValidMoves } from '../../core/moves';
 import { starsForScore } from '../../core/objectives';
 import { createSession, trySwap, useHammer } from '../../core/session';
 import type { Pos, TurnEvent } from '../../core/types';
-import { playFanfare, playPop, playSpecialFire, playThud } from '../audio/sfx';
+import { playBloom, playDelivery, playFanfare, playPop, playRainSpecial, playSpecialFire, playThud } from '../audio/sfx';
 import { attachBoardInput } from '../input';
-import { drawBigFruit, drawColorBomb, drawFruit, drawSpecialGlow, drawSpecialOverlay } from '../render/fruits';
-import { createRenderPieces, playPhases, type RenderPiece } from '../render/playback';
+import {
+  drawBigFruit,
+  drawColorBomb,
+  drawDeliverSparkle,
+  drawFlowerBloomEffect,
+  drawFruit,
+  drawSpecialGlow,
+  drawSpecialOverlay,
+} from '../render/fruits';
+import { createRenderEffects, createRenderPieces, playPhases, type RenderEffect, type RenderPiece } from '../render/playback';
 import { cellCenter, computeLayout, drawBoardBackground, roundRect, setupHiDpiCanvas, type Layout } from '../render/renderer';
 import type { Settings, Stars } from '../save';
 import { STRINGS } from '../strings';
@@ -42,8 +50,17 @@ function playSoundsFor(phases: TurnEvent[][], justWon: boolean): void {
     return;
   }
   const flat = phases.flat();
-  if (flat.some((e) => e.kind === 'specialFire' || e.kind === 'comboFire')) {
+  // One representative sound per turn, in priority order, so a turn with
+  // many events (e.g. a cascade with a delivery AND a bloom AND ordinary
+  // clears) doesn't stack a dozen overlapping sounds.
+  if (flat.some((e) => e.kind === 'deliver')) {
+    playDelivery();
+  } else if (flat.some((e) => e.kind === 'specialFire' && e.special === 'rain')) {
+    playRainSpecial();
+  } else if (flat.some((e) => e.kind === 'specialFire' || e.kind === 'comboFire')) {
     playSpecialFire();
+  } else if (flat.some((e) => e.kind === 'flowerBloom')) {
+    playBloom();
   } else if (flat.some((e) => e.kind === 'clear')) {
     playPop();
   }
@@ -58,6 +75,11 @@ export function startPlayScreen(
 ): () => void {
   const session = createSessionWithRetry(level, HAMMER_COUNT);
   let renderPieces: Map<number, RenderPiece> = createRenderPieces(session.board);
+  // Transient cell-anchored effects (flower bloom, delivery sparkle) that
+  // have no backing piece. Unlike renderPieces, this map is never replaced
+  // wholesale — playPhases mutates it in place and always empties it again
+  // before returning, so there is nothing to reset between turns.
+  const effects: Map<number, RenderEffect> = createRenderEffects();
   let selected: Pos | null = null;
   let locked = false;
   let running = true;
@@ -179,6 +201,18 @@ export function startPlayScreen(
       }
     }
 
+    // Transient cell-anchored effects (flower bloom, delivery sparkle) draw
+    // on top of the pieces so they stay legible as the reward flourish they
+    // are meant to be.
+    for (const effect of effects.values()) {
+      const { x, y } = cellCenter(layout, effect.x, effect.y);
+      if (effect.kind === 'flowerBloom') {
+        drawFlowerBloomEffect(ctx, x, y, layout.tileSize, effect.progress);
+      } else {
+        drawDeliverSparkle(ctx, x, y, layout.tileSize, effect.progress);
+      }
+    }
+
     rafId = requestAnimationFrame(drawFrame);
   }
 
@@ -205,7 +239,7 @@ export function startPlayScreen(
       if (result.movesUsed === 0 && result.phases.some((phase) => phase.some((e) => e.kind === 'swap' && e.illegal))) {
         playThud();
       }
-      await playPhases(result.phases, renderPieces, speedMultiplier);
+      await playPhases(result.phases, renderPieces, effects, speedMultiplier);
       if (result.phases.flat().some((e) => e.kind === 'reshuffle')) {
         showToast(STRINGS.reshuffleToast);
       }
@@ -226,7 +260,7 @@ export function startPlayScreen(
     locked = true;
     try {
       const result = useHammer(session, pos);
-      await playPhases(result.phases, renderPieces, speedMultiplier);
+      await playPhases(result.phases, renderPieces, effects, speedMultiplier);
       if (result.phases.flat().some((e) => e.kind === 'reshuffle')) {
         showToast(STRINGS.reshuffleToast);
       }
